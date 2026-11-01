@@ -30,6 +30,9 @@ Screens and the phased dev plan live on the design canvas.
 - `src/lib/data.ts` has the reads; `src/app/*-actions.ts` have the writes.
 - `src/app/(app)/money/` is Money: wallets, BNPL credit lines and loans (with their
   payment plans in `[id]`), and `people/` for utang & pautang.
+- `src/app/(app)/grocery/` is Grocery mode: start a trip, scan (BarcodeDetector, with
+  `@zxing/browser` as the fallback for iPhone Safari), check out. The trip in progress lives in
+  IndexedDB (`src/lib/active-trip.ts`) until checkout saves one Groceries expense.
 - `src/app/(app)/plan/` is Plan: Forecast, Scheduled (recurring and planned income and
   expenses), Can I afford this? and Budgets per kinsenas.
 - `src/lib/money.ts`, `schedule.ts`, `forecast.ts`, `dates.ts` and `calculator.ts` are pure helpers:

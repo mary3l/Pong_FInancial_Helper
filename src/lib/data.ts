@@ -2,6 +2,7 @@ import "server-only";
 import { connection } from "next/server";
 import { addDays } from "@/lib/dates";
 import { scheduledItems, sortItems, type ForecastItem, type ScheduleInputs } from "@/lib/forecast";
+import type { PriceMemory } from "@/lib/grocery";
 import { isSpendable, roundCents, type AccountType, type TransactionType } from "@/lib/money";
 import { personItems, type EntryKind, type Person } from "@/lib/people";
 import type { Frequency } from "@/lib/schedule";
@@ -313,6 +314,33 @@ export async function getPeople({ includeArchived = false } = {}): Promise<Perso
         splitTotal: row.split_total === null ? null : Number(row.split_total),
       })),
   }));
+}
+
+/**
+ * Grocery mode: price memory (barcode → name and latest price per store),
+ * the stores you've shopped at, most recent first.
+ */
+export async function getPriceMemory(): Promise<{ memory: PriceMemory; stores: string[] }> {
+  const supabase = await db();
+  const [products, prices, trips] = await Promise.all([
+    supabase.from("products").select("id, barcode, name").limit(2000),
+    supabase.from("product_prices").select("product_id, store, price").order("seen_at", { ascending: false }).limit(5000),
+    supabase.from("grocery_trips").select("store").order("created_at", { ascending: false }).limit(50),
+  ]);
+  if (products.error) throw dbError(products.error);
+  if (prices.error) throw dbError(prices.error);
+  if (trips.error) throw dbError(trips.error);
+
+  const memory: PriceMemory = {};
+  const byId = new Map(products.data.map((p) => [p.id, p]));
+  // Newest first, so the first price seen per store is the latest.
+  for (const row of prices.data) {
+    const product = byId.get(row.product_id);
+    if (!product) continue;
+    const entry = (memory[product.barcode] ??= { name: product.name, prices: {}, last: Number(row.price) });
+    entry.prices[row.store] ??= Number(row.price);
+  }
+  return { memory, stores: [...new Set(trips.data.map((t) => t.store as string))] };
 }
 
 export type PlanInputs = {

@@ -41,6 +41,7 @@ export default function SettingsPage() {
 
       <Group title="TOOLS">
         <Row title="Wallets, BNPL & loans" detail="Cash, banks, e-wallets and what you owe" href="/money" />
+        <Row title="Grocery mode" detail="Scan as you shop and stay in budget" href="/grocery" />
         <Row title="Salary breakdown" detail="SSS, PhilHealth, Pag-IBIG, tax" soon />
         <Row title="Import CSV · Export · Backup" soon />
       </Group>

@@ -151,3 +151,27 @@ select
 ```
 
 Expect `true` and `true`.
+
+## Step 7 · Phase 5: Grocery mode
+
+File: `migrations/0007_grocery.sql`
+
+Powers **Grocery mode** checkout and price memory.
+
+- `products` and `product_prices`: each barcode you've scanned, and what it cost at
+  each store, so next time it fills in by itself.
+- `grocery_trips` and `grocery_items`: a finished trip and its items, attached to the one
+  Groceries expense it saves. Deleting that expense in Activity deletes the trip too.
+
+The trip you're on is kept on your phone until checkout, so nothing is saved here while
+you shop.
+
+**Check**
+
+```sql
+select count(*) from information_schema.tables
+where table_schema = 'public'
+  and table_name in ('products', 'product_prices', 'grocery_trips', 'grocery_items');
+```
+
+Expect `4`.

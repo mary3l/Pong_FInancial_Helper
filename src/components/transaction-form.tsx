@@ -524,6 +524,11 @@ export function TransactionForm({
                 </button>
               ))}
             </div>
+            {category === "groceries" && !editing && (
+              <Link href="/grocery" className="text-[13px] font-extrabold text-sea-dark underline">
+                At the store now? Scan as you shop in Grocery mode
+              </Link>
+            )}
           </div>
         )}
 
