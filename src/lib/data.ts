@@ -1,7 +1,7 @@
 import "server-only";
 import { connection } from "next/server";
 import { addDays } from "@/lib/dates";
-import { scheduledItems, type ForecastItem } from "@/lib/forecast";
+import { scheduledItems, type ForecastItem, type ScheduleInputs } from "@/lib/forecast";
 import { isSpendable, roundCents, type AccountType, type TransactionType } from "@/lib/money";
 import type { Frequency } from "@/lib/schedule";
 import { createClient } from "@/lib/supabase/server";
@@ -14,7 +14,12 @@ export type Account = {
   name: string;
   type: AccountType;
   startingBalance: number;
+  /** Below 0 on a credit line or loan: what you owe. */
   balance: number;
+  /** Credit lines only. */
+  creditLimit: number | null;
+  /** Credit lines: the day of the month the bill is due. */
+  dueDay: number | null;
   archived: boolean;
 };
 
@@ -64,6 +69,31 @@ export type PlannedExpense = {
 
 export type Budget = { id: string; category: string; amount: number };
 
+/** A BNPL purchase or a loan, paid down in installments (Phase 3). */
+export type InstallmentPlan = {
+  id: string;
+  kind: "bnpl" | "loan";
+  accountId: string;
+  name: string;
+  principal: number;
+  feeTotal: number;
+  months: number;
+  payFromAccountId: string | null;
+  payments: ScheduledPayment[];
+};
+
+export type ScheduledPayment = {
+  id: string;
+  planId: string;
+  seq: number;
+  dueOn: string;
+  amount: number;
+  principalPart: number;
+  feePart: number;
+  /** The transfer or fee transaction once paid; null while unpaid. */
+  transactionId: string | null;
+};
+
 /** A recent expense, income or transfer to repeat with one tap in Add. */
 export type Template = Omit<Transaction, "id" | "occurredOn">;
 
@@ -86,7 +116,7 @@ export async function getAccounts({ includeArchived = false } = {}): Promise<Acc
   const supabase = await db();
   let query = supabase
     .from("accounts")
-    .select("id, name, type, starting_balance, archived")
+    .select("id, name, type, starting_balance, credit_limit, due_day, archived")
     .order("created_at");
   if (!includeArchived) query = query.eq("archived", false);
 
@@ -106,6 +136,8 @@ export async function getAccounts({ includeArchived = false } = {}): Promise<Acc
     type: a.type as AccountType,
     startingBalance: Number(a.starting_balance),
     balance: balanceById.get(a.id) ?? Number(a.starting_balance),
+    creditLimit: a.credit_limit === null ? null : Number(a.credit_limit),
+    dueDay: a.due_day,
     archived: a.archived,
   }));
 }
@@ -178,6 +210,65 @@ export async function getBudgets(): Promise<Budget[]> {
   return data.map((b) => ({ id: b.id, category: b.category, amount: Number(b.amount) }));
 }
 
+/**
+ * Installment plans with their payments, oldest first. `accountId` limits
+ * it to one credit line or loan.
+ */
+export async function getInstallmentPlans(accountId?: string): Promise<InstallmentPlan[]> {
+  const supabase = await db();
+  let plans = supabase
+    .from("installment_plans")
+    .select("id, kind, account_id, name, principal, fee_total, months, pay_from_account_id")
+    .order("created_at");
+  if (accountId) plans = plans.eq("account_id", accountId);
+  const [p, s] = await Promise.all([
+    plans,
+    supabase
+      .from("scheduled_payments")
+      .select("id, plan_id, seq, due_on, amount, principal_part, fee_part, transfer_txn_id, fee_txn_id")
+      .order("due_on"),
+  ]);
+  if (p.error) throw dbError(p.error);
+  if (s.error) throw dbError(s.error);
+
+  return p.data.map((plan) => ({
+    id: plan.id,
+    kind: plan.kind,
+    accountId: plan.account_id,
+    name: plan.name,
+    principal: Number(plan.principal),
+    feeTotal: Number(plan.fee_total),
+    months: plan.months,
+    payFromAccountId: plan.pay_from_account_id,
+    payments: s.data
+      .filter((row) => row.plan_id === plan.id)
+      .map((row) => ({
+        id: row.id,
+        planId: row.plan_id,
+        seq: row.seq,
+        dueOn: row.due_on,
+        amount: Number(row.amount),
+        principalPart: Number(row.principal_part),
+        feePart: Number(row.fee_part),
+        transactionId: row.transfer_txn_id ?? row.fee_txn_id,
+      })),
+  }));
+}
+
+/** Installments as forecast inputs: "Running shoes (2 of 3)". */
+export function installmentInputs(plans: InstallmentPlan[]): NonNullable<ScheduleInputs["installments"]> {
+  return plans.flatMap((plan) =>
+    plan.payments.map((p) => ({
+      id: p.id,
+      name: plan.months > 1 ? `${plan.name} (${p.seq} of ${plan.months})` : plan.name,
+      dueOn: p.dueOn,
+      amount: p.amount,
+      payFromAccountId: plan.payFromAccountId,
+      transactionId: p.transactionId,
+    })),
+  );
+}
+
 export type PlanInputs = {
   accounts: Account[];
   /** Money in cash, bank and e-wallets right now. */
@@ -189,19 +280,21 @@ export type PlanInputs = {
 
 /** Everything the forecast, Safe to spend and Due soon work from. */
 export async function getPlanInputs(today: string, days: number): Promise<PlanInputs> {
-  const [accounts, recurring, billPayments, planned] = await Promise.all([
+  const [accounts, recurring, billPayments, planned, plans] = await Promise.all([
     getAccounts(),
     getRecurringItems(),
     getBillPayments(today),
     getPlannedExpenses(today),
+    getInstallmentPlans(),
   ]);
+  const installments = installmentInputs(plans);
   return {
     accounts,
     inWallets: roundCents(
       accounts.filter((a) => isSpendable(a.type)).reduce((sum, a) => sum + a.balance, 0),
     ),
     payday: recurring.find((r) => r.kind === "payday") ?? null,
-    items: scheduledItems({ recurring, billPayments, planned }, today, addDays(today, days)),
+    items: scheduledItems({ recurring, billPayments, planned, installments }, today, addDays(today, days)),
   };
 }
 

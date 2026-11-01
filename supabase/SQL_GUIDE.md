@@ -102,3 +102,25 @@ select
 ```
 
 Expect `recurring_columns = 2` and `planned_columns = 1`.
+
+## Step 5 · Phase 3: BNPL, loans and digital banks
+
+File: `migrations/0005_installments_loans.sql`
+
+Powers SPayLater / Atome payment plans in Add, **Money › + BNPL**, **Money › + Loan**,
+the credit line and loan screens, and installments in Coming up and the forecast.
+
+- `installment_plans`: one row per BNPL purchase or loan.
+- `scheduled_payments`: one row per installment, linked to the transfer (and fee
+  expense) once you pay it.
+
+MariBank, GoTyme, GCash and Maya need nothing new: add them as normal wallets.
+
+**Check**
+
+```sql
+select count(*) from information_schema.tables
+where table_schema = 'public' and table_name in ('installment_plans', 'scheduled_payments');
+```
+
+Expect `2`.

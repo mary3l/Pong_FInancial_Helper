@@ -5,27 +5,12 @@ import { SIGNED_OUT_ERROR, signedInClient } from "@/lib/auth";
 import { EXPENSE_CATEGORIES, isCategoryFor } from "@/lib/categories";
 import { isValidDate, today } from "@/lib/dates";
 import { monthlyDates, recurringCategory, splitAmount } from "@/lib/forecast";
-import { MAX_AMOUNT, isSpendable, roundCents, type AccountType } from "@/lib/money";
+import { MAX_AMOUNT, roundCents } from "@/lib/money";
+import { pickWallet, type Client } from "@/lib/server-writes";
 
 export type PlanResult = { error?: string };
 
-type Client = NonNullable<Awaited<ReturnType<typeof signedInClient>>>;
-
 const FAILED = { error: "Couldn't save that. Please try again." };
-
-/**
- * The wallet money comes from or lands in: the one saved with the item if
- * it's still in use, else your first cash, bank or e-wallet.
- */
-async function itemWallet(supabase: Client, preferred: string | null): Promise<string | null> {
-  const { data } = await supabase
-    .from("accounts")
-    .select("id, type")
-    .eq("archived", false)
-    .order("created_at");
-  const wallets = (data ?? []).filter((a) => isSpendable(a.type as AccountType));
-  return wallets.find((a) => a.id === preferred)?.id ?? wallets[0]?.id ?? null;
-}
 
 async function logTransaction(
   supabase: Client,
@@ -65,7 +50,7 @@ export async function logRecurring(recurringItemId: string, dueOn: string): Prom
   if (!item) return { error: "Couldn't find that item." };
   if (!item.amount) return { error: "Set an amount for it first." };
 
-  const accountId = await itemWallet(supabase, item.account_id);
+  const accountId = await pickWallet(supabase, item.account_id);
   if (!accountId) return NO_WALLET;
 
   const txnId = await logTransaction(supabase, {
@@ -106,7 +91,7 @@ export async function logPlanned(id: string): Promise<PlanResult> {
     return {};
   }
 
-  const accountId = await itemWallet(supabase, planned.account_id);
+  const accountId = await pickWallet(supabase, planned.account_id);
   if (!accountId) return NO_WALLET;
 
   const txnId = await logTransaction(supabase, {

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState, useTransition } from "react";
+import { payInstallments, undoInstallment } from "@/app/credit-actions";
 import { logPlanned, logRecurring } from "@/app/plan-actions";
 import { deleteTransaction } from "@/app/transaction-actions";
 import type { ForecastItem } from "@/lib/forecast";
@@ -15,13 +16,15 @@ export function prefillHref(item: ForecastItem): string {
   if (item.amount) query.set("amount", String(item.amount));
   if (item.category) query.set("category", item.category);
   if (item.accountId) query.set("account", item.accountId);
-  if (item.kind !== "planned") query.set("link", `${item.id}|${item.dueOn}`);
+  if (item.kind === "payday" || item.kind === "income" || item.kind === "bill") {
+    query.set("link", `${item.id}|${item.dueOn}`);
+  }
   return `/add?${query}`;
 }
 
 // "Mark paid" for money going out, "Add income" for money coming in. Either
 // logs the real transaction at the scheduled amount; undo deletes it, which
-// un-marks the item.
+// un-marks the item. An installment logs a transfer plus its fee.
 export function LogButton({ item }: { item: ForecastItem }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -32,11 +35,15 @@ export function LogButton({ item }: { item: ForecastItem }) {
   function toggle() {
     setError(null);
     startTransition(async () => {
-      const result = paid
-        ? await deleteTransaction(item.transactionId!)
-        : item.kind === "planned"
-          ? await logPlanned(item.id)
-          : await logRecurring(item.id, item.dueOn);
+      const result = await (item.kind === "installment"
+        ? paid
+          ? undoInstallment(item.id)
+          : payInstallments([item.id])
+        : paid
+          ? deleteTransaction(item.transactionId!)
+          : item.kind === "planned"
+            ? logPlanned(item.id)
+            : logRecurring(item.id, item.dueOn));
       if (result.error) setError(result.error);
     });
   }

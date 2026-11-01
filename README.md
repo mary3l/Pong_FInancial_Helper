@@ -28,6 +28,8 @@ Screens and the phased dev plan live on the design canvas.
 - `src/app/setup/` is first-run setup (wallets, then payday and bills). The proxy sends Home there
   until the user finishes or skips it, which sets `setup_done` in their user metadata.
 - `src/lib/data.ts` has the reads; `src/app/*-actions.ts` have the writes.
+- `src/app/(app)/money/` is Money: wallets, BNPL credit lines and loans (with their
+  payment plans in `[id]`).
 - `src/app/(app)/plan/` is Plan: Forecast, Scheduled (recurring and planned income and
   expenses), Can I afford this? and Budgets per kinsenas.
 - `src/lib/money.ts`, `schedule.ts`, `forecast.ts`, `dates.ts` and `calculator.ts` are pure helpers:
@@ -39,6 +41,12 @@ Screens and the phased dev plan live on the design canvas.
 ## Money rules
 
 Transfers between your own wallets are never spending. See the comments in the migrations.
+
+BNPL (SPayLater, Atome): the purchase is an expense on the day you buy, paid from the credit
+line, so its balance goes below 0 (what you owe). Each installment is a transfer from a
+wallet to the credit line, plus an expense for the fee. Loans (SLoan, MariLoan): the money
+received is a transfer from the loan account, never income; each amortization is a transfer
+for the principal plus an expense for the interest. `src/lib/installments.ts` has the math.
 
 Safe to spend = money in cash, bank and e-wallets, minus unpaid bills and expenses due
 before the next payday, divided by the days until payday. Income you haven't received yet

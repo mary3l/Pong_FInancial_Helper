@@ -16,7 +16,7 @@ import {
   today as getToday,
 } from "@/lib/dates";
 import { itemLabel, project, safeToSpend, type ForecastItem, type SafeToSpend } from "@/lib/forecast";
-import { accountTypeLabel, formatPeso } from "@/lib/money";
+import { accountTypeLabel, formatPeso, isDebt, isSpendable, roundCents } from "@/lib/money";
 
 // Design canvas 2.1: Safe to spend (with its breakdown), Coming up (bills and
 // expenses with Mark paid, pay and income with Add income), the next 30 days,
@@ -82,6 +82,8 @@ async function Dashboard() {
   const weekOut = addDays(today, 7);
   const dueSoon = items.filter((i) => i.dueOn < weekOut && (i.dueOn >= today || !i.transactionId));
   const hasScheduled = items.some((i) => i.kind !== "planned");
+  const wallets = accounts.filter((a) => isSpendable(a.type));
+  const owed = roundCents(accounts.filter((a) => isDebt(a.type)).reduce((sum, a) => sum + Math.max(0, -a.balance), 0));
 
   return (
     <div className="flex flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)] lg:items-start">
@@ -135,8 +137,8 @@ async function Dashboard() {
             <Link href="/money" className="text-sm font-extrabold text-sea">Money ›</Link>
           </div>
           <div className="flex flex-col rounded-[20px] bg-white px-4 py-1.5">
-            {accounts.length ? (
-              accounts.map((a) => (
+            {wallets.length ? (
+              wallets.map((a) => (
                 <div key={a.id} className="flex items-center justify-between gap-3 border-b border-line-soft py-2.5 last:border-0">
                   <span className="flex min-w-0 flex-col">
                     <span className="truncate font-bold">{a.name}</span>
@@ -151,6 +153,15 @@ async function Dashboard() {
               <p className="py-3 text-[15px] text-muted">
                 No wallets yet. <Link href="/money" className="font-extrabold text-sea-dark underline">Add one</Link>
               </p>
+            )}
+            {owed > 0 && (
+              <Link href="/money" className="flex items-center justify-between gap-3 py-2.5 text-ink">
+                <span className="flex flex-col">
+                  <span className="font-bold">You owe</span>
+                  <span className="text-[13px] text-muted">BNPL and loans</span>
+                </span>
+                <span className="font-display text-[17px] font-semibold text-coral-text">{formatPeso(owed)}</span>
+              </Link>
             )}
           </div>
         </section>

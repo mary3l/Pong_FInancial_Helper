@@ -4,7 +4,7 @@
 export type AccountType = "cash" | "bank" | "ewallet" | "credit_line" | "loan";
 export type TransactionType = "expense" | "income" | "transfer";
 
-/** Wallet types you can create in Phase 1. Credit lines and loans come in Phase 3. */
+/** Accounts that hold your own money. Credit lines and loans have their own forms. */
 export const WALLET_TYPES = [
   { value: "cash", label: "Cash" },
   { value: "bank", label: "Bank" },
@@ -20,8 +20,13 @@ export function isWalletType(value: unknown): value is WalletType {
 export function accountTypeLabel(type: AccountType): string {
   return (
     WALLET_TYPES.find((t) => t.value === type)?.label ??
-    (type === "credit_line" ? "Credit line" : "Loan")
+    (type === "credit_line" ? "BNPL" : "Loan")
   );
+}
+
+/** Credit lines (SPayLater, Atome) and loans (SLoan, MariLoan): money you owe. */
+export function isDebt(type: AccountType): boolean {
+  return type === "credit_line" || type === "loan";
 }
 
 /** Money that's actually yours to spend. Credit limits and loans never count. */

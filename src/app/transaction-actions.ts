@@ -4,7 +4,9 @@ import { refresh } from "next/cache";
 import { SIGNED_OUT_ERROR, signedInClient } from "@/lib/auth";
 import { isCategoryFor } from "@/lib/categories";
 import { isValidDate } from "@/lib/dates";
-import { MAX_AMOUNT, roundCents, type TransactionType } from "@/lib/money";
+import { bnplFee, buildSchedule } from "@/lib/installments";
+import { MAX_AMOUNT, isSpendable, roundCents, type AccountType, type TransactionType } from "@/lib/money";
+import { savePlan } from "@/lib/server-writes";
 
 export type TransactionInput = {
   type: TransactionType;
@@ -92,6 +94,67 @@ export async function saveTransaction(
         error: linked.error.code === "23505" ? "That's already logged." : "Couldn't save that. Please try again.",
       };
     }
+  }
+
+  refresh();
+  return {};
+}
+
+export type BnplPlanInput = {
+  /** 1 = pay next month in full. */
+  months: number;
+  /** Fee or interest as a flat % of the price per month. */
+  ratePerMonth: number;
+  firstDue: string;
+  payFromAccountId: string | null;
+};
+
+/**
+ * A purchase on SPayLater or Atome: the expense on the purchase date from
+ * the credit line, plus its payment plan. Deleting the expense later
+ * deletes the plan too.
+ */
+export async function saveBnplPurchase(input: TransactionInput, plan: BnplPlanInput): Promise<ActionResult> {
+  const checked = validate(input);
+  if (!checked.row) return { error: checked.error };
+  if (checked.row.type !== "expense") return { error: "Payment plans are for expenses." };
+  if (!Number.isInteger(plan.months) || plan.months < 1 || plan.months > 24) return { error: "Pick how many months." };
+  if (!(plan.ratePerMonth >= 0 && plan.ratePerMonth <= 10)) return { error: "Check the monthly fee (0 to 10%)." };
+  if (!isValidDate(plan.firstDue) || plan.firstDue < checked.row.occurred_on) {
+    return { error: "The first payment can't be before the purchase." };
+  }
+
+  const supabase = await signedInClient();
+  if (!supabase) return { error: SIGNED_OUT_ERROR };
+
+  const ids = [checked.row.account_id, plan.payFromAccountId].filter((id): id is string => Boolean(id));
+  const { data: accounts } = await supabase.from("accounts").select("id, type").in("id", ids);
+  const typeOf = (id: string | null) => accounts?.find((a) => a.id === id)?.type as AccountType | undefined;
+  if (typeOf(checked.row.account_id) !== "credit_line") return { error: "Pick a BNPL credit line to pay with." };
+  const payFrom = plan.payFromAccountId && isSpendable(typeOf(plan.payFromAccountId)!) ? plan.payFromAccountId : null;
+
+  const { data, error } = await supabase.from("transactions").insert(checked.row).select("id").single();
+  if (error) return { error: "Couldn't save that. Please try again." };
+
+  const amount = checked.row.amount;
+  const saved = await savePlan(supabase, {
+    kind: "bnpl",
+    accountId: checked.row.account_id,
+    name: checked.row.note ?? "Purchase",
+    principal: amount,
+    months: plan.months,
+    payFromAccountId: payFrom,
+    sourceTxnId: data.id,
+    rows: buildSchedule({
+      principal: amount,
+      feeTotal: bnplFee(amount, plan.ratePerMonth, plan.months),
+      months: plan.months,
+      firstDue: plan.firstDue,
+    }),
+  });
+  if (!saved) {
+    await supabase.from("transactions").delete().eq("id", data.id);
+    return { error: "Couldn't save the payment plan. Please try again." };
   }
 
   refresh();

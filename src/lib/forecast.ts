@@ -9,7 +9,7 @@ import { nextOccurrence, occurrences, type Schedule } from "@/lib/schedule";
 // they're logged ("Mark paid" or "Add income"): then the wallet balance
 // already reflects them and the item drops out.
 
-export type ForecastKind = "payday" | "income" | "bill" | "planned";
+export type ForecastKind = "payday" | "income" | "bill" | "planned" | "installment";
 
 /** Something scheduled to move money on a date. */
 export type ForecastItem = {
@@ -18,7 +18,7 @@ export type ForecastItem = {
   kind: ForecastKind;
   /** Money coming in (pay, income) or going out (bills, expenses). */
   flow: "in" | "out";
-  /** The recurring_items or planned_expenses row. */
+  /** The recurring_items, planned_expenses or scheduled_payments row. */
   id: string;
   name: string;
   /** Always positive. Null for a payday with no net pay saved. */
@@ -55,6 +55,16 @@ export type ScheduleInputs = {
     accountId: string | null;
     transactionId: string | null;
   }[];
+  /** BNPL and loan payments (Phase 3). */
+  installments?: {
+    id: string;
+    name: string;
+    dueOn: string;
+    amount: number;
+    payFromAccountId: string | null;
+    /** The transfer or fee transaction, once paid. */
+    transactionId: string | null;
+  }[];
 };
 
 /** The category a recurring item logs under when it has none saved. */
@@ -69,7 +79,7 @@ export function recurringCategory(r: { kind: "payday" | "bill" | "income"; categ
  * included too, since they're still expected.
  */
 export function scheduledItems(
-  { recurring, billPayments, planned }: ScheduleInputs,
+  { recurring, billPayments, planned, installments = [] }: ScheduleInputs,
   from: string,
   until: string,
 ): ForecastItem[] {
@@ -113,6 +123,25 @@ export function scheduledItems(
     });
   }
 
+  // Unpaid installments stay owed after their date, like planned expenses.
+  for (const p of installments) {
+    const late = p.dueOn < from && !p.transactionId;
+    if (!late && (p.dueOn < from || p.dueOn >= until)) continue;
+    items.push({
+      key: `installment|${p.id}`,
+      kind: "installment",
+      flow: "out",
+      id: p.id,
+      name: p.name,
+      amount: p.amount,
+      dueOn: p.dueOn,
+      accountId: p.payFromAccountId,
+      category: null,
+      estimate: false,
+      transactionId: p.transactionId,
+    });
+  }
+
   return sortItems(items);
 }
 
@@ -142,6 +171,8 @@ export function itemLabel(item: Pick<ForecastItem, "kind" | "flow">): string {
       return "Bill";
     case "planned":
       return item.flow === "in" ? "Planned income" : "Planned";
+    case "installment":
+      return "Installment";
   }
 }
 

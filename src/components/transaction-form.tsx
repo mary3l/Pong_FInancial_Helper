@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useEffectEvent, useState, useTransition } from "react";
 import {
   deleteTransaction,
+  saveBnplPurchase,
   saveTransaction,
 } from "@/app/transaction-actions";
 import { CloseIcon, PathIcon } from "@/components/icons";
@@ -20,8 +21,9 @@ import {
 } from "@/lib/calculator";
 import { categoriesFor, categoryInfo } from "@/lib/categories";
 import type { Account, Template, Transaction } from "@/lib/data";
-import { formatRelativeDay, isValidDate } from "@/lib/dates";
-import { balanceEffect, formatPeso, type TransactionType } from "@/lib/money";
+import { formatRelativeDay, formatShortDay, isValidDate } from "@/lib/dates";
+import { bnplFee, bnplFirstDue, buildSchedule } from "@/lib/installments";
+import { balanceEffect, formatPeso, isSpendable, type TransactionType } from "@/lib/money";
 
 // Design canvas 2.2 (phone) and "Web · Add expense modal" (desktop).
 // One form for adding and editing expenses, income and transfers.
@@ -31,6 +33,21 @@ const TYPES: { value: TransactionType; label: string }[] = [
   { value: "income", label: "Income" },
   { value: "transfer", label: "Transfer" },
 ];
+
+/** BNPL plan lengths offered in Add; 1 is "pay next month". */
+const PLAN_MONTHS = [1, 3, 6, 12];
+
+/**
+ * Which accounts each type can use: you spend from wallets or a BNPL credit
+ * line, receive into wallets, and move money between any of your accounts.
+ */
+function usableFor(type: TransactionType, accounts: Account[], keep: (string | null | undefined)[] = []) {
+  return accounts.filter(
+    (a) =>
+      keep.includes(a.id) ||
+      (type === "transfer" ? true : type === "income" ? isSpendable(a.type) : isSpendable(a.type) || a.type === "credit_line"),
+  );
+}
 
 const TITLES: Record<TransactionType, string> = {
   expense: "Add expense",
@@ -124,12 +141,26 @@ export function TransactionForm({
   const [note, setNote] = useState(transaction?.note ?? prefill?.note ?? "");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // BNPL payment plan, shown when paying with a credit line.
+  const [planMonths, setPlanMonths] = useState(3);
+  const [planRate, setPlanRate] = useState("0");
+  const [planFirstDue, setPlanFirstDue] = useState<string | null>(null);
+  const [planPayFrom, setPlanPayFrom] = useState(accounts.find((a) => isSpendable(a.type))?.id ?? "");
 
   const category = type === "transfer" ? null : categories[type];
   const value = evaluate(calc.expr);
   const amount = value && value > 0 ? value : 0;
   const account = accounts.find((a) => a.id === accountId);
   const toAccount = accounts.find((a) => a.id === toAccountId);
+  const keep = [transaction?.accountId, transaction?.toAccountId];
+  const fromList = usableFor(type, accounts, keep);
+  const withPlan = !editing && type === "expense" && account?.type === "credit_line";
+  const rate = Number(planRate);
+  const firstDue = planFirstDue ?? (isValidDate(date) ? bnplFirstDue(date, account?.dueDay ?? null) : "");
+  const planRows =
+    withPlan && amount && isValidDate(firstDue) && rate >= 0
+      ? buildSchedule({ principal: amount, feeTotal: bnplFee(amount, rate, planMonths), months: planMonths, firstDue })
+      : [];
 
   function close() {
     if (mode === "modal") router.back();
@@ -147,13 +178,17 @@ export function TransactionForm({
   function pickType(next: TransactionType) {
     setType(next);
     setSaveError(null);
-    if (next === "transfer" && toAccountId === accountId) {
-      setToAccountId(accounts.find((a) => a.id !== accountId)?.id ?? "");
+    const list = usableFor(next, accounts, keep);
+    const from = list.some((a) => a.id === accountId) ? accountId : (list[0]?.id ?? "");
+    setAccountId(from);
+    if (next === "transfer" && toAccountId === from) {
+      setToAccountId(accounts.find((a) => a.id !== from)?.id ?? "");
     }
   }
 
   function pickFrom(id: string) {
     setAccountId(id);
+    setPlanFirstDue(null);
     if (id === toAccountId) setToAccountId(accounts.find((a) => a.id !== id)?.id ?? "");
   }
 
@@ -183,9 +218,23 @@ export function TransactionForm({
       setSaveError("Enter an amount above ₱0.");
       return;
     }
+    if (withPlan && !(rate >= 0 && rate <= 10)) {
+      setSaveError("Check the monthly fee (0 to 10%).");
+      return;
+    }
     startTransition(async () => {
+      const input = { type, amount, accountId, toAccountId: type === "transfer" ? toAccountId : null, category, note, occurredOn: date };
+      if (withPlan) {
+        const result = await saveBnplPurchase(
+          { ...input, note: note.trim() || categoryInfo("expense", category).label },
+          { months: planMonths, ratePerMonth: rate, firstDue, payFromAccountId: planPayFrom || null },
+        );
+        if (result.error) setSaveError(result.error);
+        else close();
+        return;
+      }
       const result = await saveTransaction(
-        { type, amount, accountId, toAccountId: type === "transfer" ? toAccountId : null, category, note, occurredOn: date },
+        input,
         transaction?.id,
         // The link only holds for the type it was opened with.
         prefill?.link && type === prefill.type ? prefill.link : undefined,
@@ -252,10 +301,10 @@ export function TransactionForm({
     );
   }
 
-  const pong = pongSays({ type, amount, error: calc.error, account, toAccount, transaction });
+  const pong = pongSays({ type, amount, error: calc.error, account, toAccount, transaction, planRows });
   const title = editing ? "Edit transaction" : TITLES[type];
   const saveLabel = pending ? "Saving…" : amount ? `Save ${formatPeso(amount)}` : "Enter an amount";
-  const transferWallets = accounts.filter((a) => a.id !== accountId);
+  const transferWallets = usableFor("transfer", accounts, keep).filter((a) => a.id !== accountId);
 
   const typePicker = (className: string) => (
     <div role="group" aria-label="Type" className={`gap-1 rounded-2xl bg-white p-1 ${className}`}>
@@ -410,8 +459,69 @@ export function TransactionForm({
           <span className="text-sm font-extrabold">
             {type === "expense" ? "Pay with" : type === "income" ? "Received in" : "From"}
           </span>
-          {walletChips(accountId, pickFrom, accounts, type === "expense" ? "Pay with" : type === "income" ? "Received in" : "From")}
+          {walletChips(accountId, pickFrom, fromList, type === "expense" ? "Pay with" : type === "income" ? "Received in" : "From")}
         </div>
+
+        {withPlan && (
+          <div className="order-7 flex flex-col gap-2.5 rounded-[18px] bg-white p-3.5 lg:order-none">
+            <span id="plan-label" className="text-sm font-extrabold">Payment plan</span>
+            <div role="group" aria-labelledby="plan-label" className="flex flex-wrap gap-2">
+              {PLAN_MONTHS.map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  aria-pressed={planMonths === m}
+                  onClick={() => setPlanMonths(m)}
+                  className={`h-9 rounded-full px-3.5 text-sm font-extrabold ${planMonths === m ? "bg-ink text-white" : "bg-mint text-ink hover:bg-sea-tint"}`}
+                >
+                  {m === 1 ? "Pay next month" : `${m} months`}
+                </button>
+              ))}
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="flex flex-col gap-1">
+                <label htmlFor="plan-rate" className="text-[13px] font-extrabold">Fee % / mo</label>
+                <input
+                  id="plan-rate"
+                  value={planRate}
+                  onChange={(e) => setPlanRate(e.target.value)}
+                  inputMode="decimal"
+                  className="h-11 min-w-0 rounded-[14px] bg-mint px-3 text-[15px] outline-none focus:ring-2 focus:ring-sea"
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label htmlFor="plan-first" className="text-[13px] font-extrabold">First due</label>
+                <input
+                  id="plan-first"
+                  type="date"
+                  value={firstDue}
+                  onChange={(e) => setPlanFirstDue(e.target.value)}
+                  className="h-11 min-w-0 rounded-[14px] bg-mint px-2 text-[15px] outline-none focus:ring-2 focus:ring-sea"
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label htmlFor="plan-from" className="text-[13px] font-extrabold">Pay from</label>
+                <select
+                  id="plan-from"
+                  value={planPayFrom}
+                  onChange={(e) => setPlanPayFrom(e.target.value)}
+                  className="h-11 min-w-0 rounded-[14px] bg-mint px-2 text-[15px] outline-none focus:ring-2 focus:ring-sea"
+                >
+                  {accounts.filter((a) => isSpendable(a.type)).map((a) => (
+                    <option key={a.id} value={a.id}>{a.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <p className="text-xs text-muted">
+              {planRows.length
+                ? `${formatPeso(planRows[0].amount)}${planMonths > 1 ? `/mo × ${planMonths}` : ""} from ${formatShortDay(planRows[0].dueOn, today)}` +
+                  (planRows.some((r) => r.feePart > 0) ? ` · fees ${formatPeso(planRows.reduce((s, r) => s + r.feePart, 0))}` : " · no fees")
+                : "Type an amount to see the payments."}
+              {" "}The purchase counts as spending today; each payment is a transfer, and only fees are spending.
+            </p>
+          </div>
+        )}
 
         {type === "transfer" && (
           <div className="order-7 flex flex-col gap-1.5 lg:order-none">
@@ -529,6 +639,7 @@ function pongSays({
   account,
   toAccount,
   transaction,
+  planRows,
 }: {
   type: TransactionType;
   amount: number;
@@ -536,6 +647,7 @@ function pongSays({
   account?: Account;
   toAccount?: Account;
   transaction?: Transaction;
+  planRows: { amount: number }[];
 }): { mood: PongMood; line: string } {
   if (error) return { mood: "worried", line: `${error}. Check the numbers?` };
 
@@ -548,6 +660,17 @@ function pongSays({
     return { mood: "ask", line: "Type an amount. You can add them up, like 120 + 45 + 20." };
   }
   if (!account) return { mood: "ask", line: "Which wallet is it?" };
+
+  if (type === "expense" && account.type === "credit_line") {
+    const available = account.creditLimit === null ? null : account.creditLimit + before(account);
+    if (available !== null && amount > available) {
+      return { mood: "worried", line: `That's over your ${account.name} limit. Only ${formatPeso(Math.max(0, available))} is available.` };
+    }
+    if (planRows.length > 1) {
+      return { mood: "listen", line: `${formatPeso(planRows[0].amount)} a month for ${planRows.length} months. I'll put each payment in your forecast.` };
+    }
+    return { mood: "listen", line: `Counts as spending today. I'll remind you to pay ${account.name} later.` };
+  }
 
   const left = before(account) - amount;
   if (type === "income") {

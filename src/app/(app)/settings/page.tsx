@@ -35,12 +35,12 @@ export default function SettingsPage() {
 
       <Group title="DEBTS & COMMITMENTS">
         <Row title="Utang / Pautang & split bills" detail="Who owes whom" soon />
-        <Row title="Installments & loans" detail="SPayLater, Atome, SLoan, MariLoan" soon />
+        <Row title="Installments & loans" detail="SPayLater, Atome, SLoan, MariLoan" href="/money" />
         <Row title="Paluwagan" soon />
       </Group>
 
       <Group title="TOOLS">
-        <Row title="Wallets" detail="Cash, bank and e-wallets" href="/money" />
+        <Row title="Wallets, BNPL & loans" detail="Cash, banks, e-wallets and what you owe" href="/money" />
         <Row title="Salary breakdown" detail="SSS, PhilHealth, Pag-IBIG, tax" soon />
         <Row title="Import CSV · Export · Backup" soon />
       </Group>
