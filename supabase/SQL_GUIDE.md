@@ -175,3 +175,55 @@ where table_schema = 'public'
 ```
 
 Expect `4`.
+
+## Step 8 · Phase 6: security hardening
+
+File: `migrations/0008_hardening.sql`
+
+No new screens. It tightens per-user data security:
+
+- Signed-out visitors (Supabase's `anon` role) lose all access to the app's tables and
+  the balances view. Row-level security already hid everything from them; now the
+  grants are gone too, including for tables you add later.
+- The balances view is re-confirmed to run with your own rights, so RLS applies.
+- Notes and categories have length limits, a credit limit only fits a credit line, and
+  only lending, borrowing and splits can carry a due date. These apply to new and edited
+  rows; rows you already have are left as they are.
+
+**Check**
+
+```sql
+-- Tables in public without row-level security. Expect no rows.
+select c.relname as table_without_rls
+from pg_class c join pg_namespace n on n.oid = c.relnamespace
+where n.nspname = 'public' and c.relkind = 'r' and not c.relrowsecurity;
+
+-- Anything signed-out visitors can still touch. Expect no rows.
+select table_name, privilege_type
+from information_schema.role_table_grants
+where grantee = 'anon' and table_schema = 'public';
+```
+
+Run them one at a time: both should say **Success. No rows returned**.
+
+---
+
+## All done?
+
+This one query shows which steps have been run. Every column should be `true`.
+
+```sql
+select
+  to_regclass('public.accounts') is not null                as step_1,
+  to_regclass('public.recurring_items') is not null         as step_2,
+  to_regclass('public.budgets') is not null                 as step_3,
+  exists (select 1 from information_schema.columns
+          where table_name = 'planned_expenses' and column_name = 'type') as step_4,
+  to_regclass('public.scheduled_payments') is not null      as step_5,
+  to_regclass('public.person_entries') is not null          as step_6,
+  to_regclass('public.grocery_items') is not null           as step_7,
+  exists (select 1 from pg_constraint
+          where conname = 'accounts_credit_limit_type_check') as step_8;
+```
+
+The first `false` is the step to run next.

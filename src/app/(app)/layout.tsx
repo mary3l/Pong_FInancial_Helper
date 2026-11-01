@@ -1,4 +1,5 @@
 import { BottomNav, Sidebar } from "@/components/app-nav";
+import { OfflineBanner } from "@/components/offline";
 
 // Signed-in area. The proxy redirects signed-out visitors to /login; data is
 // protected separately by row-level security in Supabase. `modal` shows Add
@@ -11,6 +12,7 @@ export default function AppLayout({ children, modal }: LayoutProps<"/">) {
         {children}
       </main>
       <BottomNav />
+      <OfflineBanner />
       {modal}
     </div>
   );

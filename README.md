@@ -16,6 +16,7 @@ Screens and the phased dev plan live on the design canvas.
    **Authentication > Sign In / Providers** (needs a Google Cloud OAuth client).
    Email sign-in links work without this.
 6. `npm run dev` and open http://localhost:3000
+7. `npm test` runs the money-rule tests in `src/lib/*.test.ts`.
 
 ## Layout
 
@@ -40,6 +41,10 @@ Screens and the phased dev plan live on the design canvas.
   keypad.
 - `src/components/pong.tsx` is Pong, with every mood. Swap the art there.
 - `scripts/make-icons.mjs` regenerates the app icons.
+- `public/sw.js` is the service worker (production only): it caches the hashed build files
+  and shows `public/offline.html` when a page is opened with no signal. Pages themselves are
+  never cached, since they hold your money data. `experimental.useOffline` makes saves and
+  page loads wait and retry while offline, with a banner (`src/components/offline.tsx`).
 
 ## Money rules
 

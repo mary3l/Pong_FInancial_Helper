@@ -7,12 +7,14 @@ import { LogButton } from "@/components/log-button";
 import { Pong, type PongMood } from "@/components/pong";
 import { TransactionList } from "@/components/transaction-list";
 import { getCurrentUser } from "@/lib/auth";
-import { getPlanInputs, getTransactions, type Account } from "@/lib/data";
+import { categoryInfo } from "@/lib/categories";
+import { getBudgets, getPlanInputs, getTransactions, type Account, type Budget } from "@/lib/data";
 import {
   addDays,
   formatLongDay,
   formatRelativeDay,
   formatShortDay,
+  periodContaining,
   today as getToday,
 } from "@/lib/dates";
 import { itemLabel, project, safeToSpend, type ForecastItem, type SafeToSpend } from "@/lib/forecast";
@@ -72,9 +74,12 @@ async function Dashboard() {
   // Read the clock only at request time (Cache Components).
   await connection();
   const today = getToday();
-  const [{ accounts, inWallets, payday, items, people }, recent] = await Promise.all([
+  const period = periodContaining(today);
+  const [{ accounts, inWallets, payday, items, people }, recent, budgets, spentThisKinsenas] = await Promise.all([
     getPlanInputs(today, 30),
     getTransactions({ limit: 6 }),
+    getBudgets(),
+    getTransactions({ from: period.start, to: period.end }),
   ]);
   const sts = safeToSpend({ inWallets, payday, items, today });
   const forecast = project(inWallets, items, today, 30);
@@ -210,6 +215,8 @@ async function Dashboard() {
           </Link>
         )}
 
+        <BudgetsCard budgets={budgets} spent={spentThisKinsenas} />
+
         <section aria-labelledby="recent-heading" className="flex flex-col gap-2.5">
           <div className="flex items-baseline justify-between">
             <h2 id="recent-heading" className="font-display text-xl font-semibold">Recent activity</h2>
@@ -227,6 +234,38 @@ async function Dashboard() {
         </section>
       </div>
     </div>
+  );
+}
+
+/** Desktop dashboard: budgets this kinsenas at a glance (design "Web · Dashboard"). */
+function BudgetsCard({ budgets, spent }: { budgets: Budget[]; spent: { type: string; category: string | null; amount: number }[] }) {
+  if (!budgets.length) return null;
+  const used = (category: string) =>
+    roundCents(spent.filter((t) => t.type === "expense" && t.category === category).reduce((sum, t) => sum + t.amount, 0));
+  return (
+    <Link href="/plan/budgets" className="hidden flex-col gap-3 rounded-[20px] bg-white px-4 py-3.5 text-ink hover:ring-2 hover:ring-sea-tint lg:flex">
+      <span className="flex items-baseline justify-between">
+        <span className="font-display text-xl font-semibold">Budgets</span>
+        <span className="text-sm font-extrabold text-sea">This kinsenas ›</span>
+      </span>
+      {budgets.slice(0, 5).map((b) => {
+        const u = used(b.category);
+        const over = u > b.amount;
+        return (
+          <span key={b.id} className="flex flex-col gap-1">
+            <span className="flex justify-between text-sm">
+              <span className="font-bold">{categoryInfo("expense", b.category).label}</span>
+              <span className={over ? "font-bold text-coral-text" : "text-muted"}>
+                {formatPeso(u)} of {formatPeso(b.amount)}
+              </span>
+            </span>
+            <span aria-hidden="true" className="h-2 overflow-hidden rounded-full bg-line-soft">
+              <span className={`block h-full rounded-full ${over ? "bg-coral" : "bg-sea"}`} style={{ width: `${Math.min(100, (u / b.amount) * 100)}%` }} />
+            </span>
+          </span>
+        );
+      })}
+    </Link>
   );
 }
 

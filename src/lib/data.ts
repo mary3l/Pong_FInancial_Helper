@@ -441,7 +441,11 @@ export async function getTransactions({
     .order("created_at", { ascending: false });
   if (from) query = query.gte("occurred_on", from);
   if (to) query = query.lte("occurred_on", to);
-  if (accountId) query = query.or(`account_id.eq.${accountId},to_account_id.eq.${accountId}`);
+  if (accountId) {
+    // It goes into a PostgREST filter string, so only ever a uuid.
+    if (!/^[0-9a-f-]{36}$/i.test(accountId)) return [];
+    query = query.or(`account_id.eq.${accountId},to_account_id.eq.${accountId}`);
+  }
   if (search) {
     // Strip characters that have meaning in a PostgREST filter.
     const term = search.replace(/[%_,.()*\\:"]/g, " ").trim();

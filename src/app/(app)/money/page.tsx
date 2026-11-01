@@ -5,6 +5,7 @@ import { ChevronIcon } from "@/components/icons";
 import { getAccounts, getInstallmentPlans, getPeople, getRecurringItems, type Account, type InstallmentPlan } from "@/lib/data";
 import { formatShortDay, today as getToday } from "@/lib/dates";
 import { formatPeso, isDebt, isSpendable, roundCents } from "@/lib/money";
+import { dueDate, isOverdue, type Person } from "@/lib/people";
 import { MoneyTabs } from "./money-tabs";
 import { WalletManager } from "./wallet-manager";
 
@@ -12,10 +13,10 @@ export const metadata = { title: "Money · Pong Money" };
 
 // Design canvas 4.1: money you have (cash, banks like MariBank and GoTyme,
 // e-wallets like GCash and Maya) and money you owe (SPayLater, Atome, SLoan,
-// MariLoan), with net worth.
+// MariLoan), with net worth. On desktop, Utang & pautang sits beside it.
 export default function MoneyPage() {
   return (
-    <div className="flex flex-col gap-4 lg:max-w-3xl">
+    <div className="flex flex-col gap-4 lg:max-w-6xl">
       <h1 className="font-display text-3xl font-semibold">Money</h1>
       <MoneyTabs current="wallets" />
       <Suspense fallback={<div className="h-80 rounded-[20px] bg-line-soft" />}>
@@ -55,74 +56,113 @@ async function Wallets() {
     : null;
 
   return (
-    <>
-      <dl className="grid grid-cols-3 gap-2">
-        {[
-          { label: "You have", value: have },
-          { label: "You owe", value: owe },
-          { label: "Net worth", value: roundCents(have + owedToYou - owe) },
-        ].map((s) => (
-          <div key={s.label} className="flex flex-col gap-0.5 rounded-2xl bg-white px-3 py-3">
-            <dt className="text-xs font-bold text-muted">{s.label}</dt>
-            <dd className={`font-display text-lg font-semibold sm:text-2xl ${s.value < 0 ? "text-coral-text" : ""}`}>
-              {formatPeso(s.value)}
-            </dd>
-          </div>
-        ))}
-      </dl>
+    <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] lg:items-start lg:gap-6">
+      <div className="flex flex-col gap-4">
+        <dl className="grid grid-cols-3 gap-2">
+          {[
+            { label: "You have", value: have },
+            { label: "You owe", value: owe },
+            { label: "Net worth", value: roundCents(have + owedToYou - owe) },
+          ].map((s) => (
+            <div key={s.label} className="flex flex-col gap-0.5 rounded-2xl bg-white px-3 py-3">
+              <dt className="text-xs font-bold text-muted">{s.label}</dt>
+              <dd className={`font-display text-lg font-semibold sm:text-2xl ${s.value < 0 ? "text-coral-text" : ""}`}>
+                {formatPeso(s.value)}
+              </dd>
+            </div>
+          ))}
+        </dl>
 
-      <section aria-labelledby="have-heading" className="flex flex-col gap-2">
-        <h2 id="have-heading" className="text-[13px] font-extrabold text-muted">MONEY YOU HAVE</h2>
-        <WalletManager accounts={accounts.filter((a) => isSpendable(a.type) || a.archived)} />
-      </section>
+        <section aria-labelledby="have-heading" className="flex flex-col gap-2">
+          <h2 id="have-heading" className="text-[13px] font-extrabold text-muted">MONEY YOU HAVE</h2>
+          <WalletManager accounts={accounts.filter((a) => isSpendable(a.type) || a.archived)} />
+        </section>
 
-      <section aria-labelledby="owe-heading" className="flex flex-col gap-2">
-        <h2 id="owe-heading" className="text-[13px] font-extrabold text-muted">
-          MONEY YOU OWE
-          {perMonth > 0 && (
-            <>
-              {" · "}
-              {formatPeso(perMonth)}/mo
-              {payPerMonth && ` = ${Math.round((perMonth / payPerMonth) * 100)}% of net pay`}
-            </>
+        <section aria-labelledby="owe-heading" className="flex flex-col gap-2">
+          <h2 id="owe-heading" className="text-[13px] font-extrabold text-muted">
+            MONEY YOU OWE
+            {perMonth > 0 && (
+              <>
+                {" · "}
+                {formatPeso(perMonth)}/mo
+                {payPerMonth && ` = ${Math.round((perMonth / payPerMonth) * 100)}% of net pay`}
+              </>
+            )}
+          </h2>
+          {debts.length > 0 && (
+            <ul className="flex flex-col rounded-[20px] bg-white px-4 py-1.5">
+              {debts.map((a) => (
+                <li key={a.id} className="border-b border-line-soft last:border-0">
+                  <Link href={`/money/${a.id}`} className="flex min-h-14 items-center gap-3 py-2.5 text-ink">
+                    <span className="flex min-w-0 flex-1 flex-col">
+                      <span className="truncate font-bold">{a.name}</span>
+                      <span className="text-[13px] text-muted">{debtDetail(a, plans, today)}</span>
+                    </span>
+                    <span className="font-display text-[17px] font-semibold">{formatPeso(Math.max(0, -a.balance))}</span>
+                    <ChevronIcon size={20} className="text-muted" />
+                  </Link>
+                </li>
+              ))}
+            </ul>
           )}
-        </h2>
-        {debts.length > 0 && (
-          <ul className="flex flex-col rounded-[20px] bg-white px-4 py-1.5">
-            {debts.map((a) => (
-              <li key={a.id} className="border-b border-line-soft last:border-0">
-                <Link href={`/money/${a.id}`} className="flex min-h-14 items-center gap-3 py-2.5 text-ink">
-                  <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate font-bold">{a.name}</span>
-                    <span className="text-[13px] text-muted">{debtDetail(a, plans, today)}</span>
-                  </span>
-                  <span className="font-display text-[17px] font-semibold">{formatPeso(Math.max(0, -a.balance))}</span>
-                  <ChevronIcon size={20} className="text-muted" />
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-        <div className="grid gap-2 sm:grid-cols-2">
-          <Link
-            href="/money/credit/new"
-            className="flex h-[52px] items-center justify-center rounded-[20px] border-2 border-dashed border-line font-extrabold text-ink hover:bg-white"
-          >
-            + BNPL (SPayLater, Atome)
-          </Link>
-          <Link
-            href="/money/loan/new"
-            className="flex h-[52px] items-center justify-center rounded-[20px] border-2 border-dashed border-line font-extrabold text-ink hover:bg-white"
-          >
-            + Loan (SLoan, MariLoan)
-          </Link>
-        </div>
-        <p className="text-xs text-muted">
-          A BNPL purchase is an expense on the day you buy. Paying the bill moves money to the
-          credit line, so it&apos;s not spent twice. Only fees and interest count as spending.
-        </p>
-      </section>
-    </>
+          <div className="grid gap-2 sm:grid-cols-2">
+            <Link
+              href="/money/credit/new"
+              className="flex h-[52px] items-center justify-center rounded-[20px] border-2 border-dashed border-line font-extrabold text-ink hover:bg-white"
+            >
+              + BNPL (SPayLater, Atome)
+            </Link>
+            <Link
+              href="/money/loan/new"
+              className="flex h-[52px] items-center justify-center rounded-[20px] border-2 border-dashed border-line font-extrabold text-ink hover:bg-white"
+            >
+              + Loan (SLoan, MariLoan)
+            </Link>
+          </div>
+          <p className="text-xs text-muted">
+            A BNPL purchase is an expense on the day you buy. Paying the bill moves money to the
+            credit line, so it&apos;s not spent twice. Only fees and interest count as spending.
+          </p>
+        </section>
+      </div>
+      <PeoplePanel people={people} today={today} />
+    </div>
+  );
+}
+
+/** Desktop only: utang and pautang next to your wallets. */
+function PeoplePanel({ people, today }: { people: Person[]; today: string }) {
+  const open = people.filter((p) => p.balance !== 0).sort((a, b) => b.balance - a.balance);
+  return (
+    <section aria-labelledby="people-panel-heading" className="hidden flex-col gap-2 lg:flex">
+      <div className="flex items-baseline justify-between">
+        <h2 id="people-panel-heading" className="font-display text-xl font-semibold">Utang &amp; pautang</h2>
+        <Link href="/money/people" className="text-sm font-extrabold text-sea">See all ›</Link>
+      </div>
+      <ul className="flex flex-col rounded-[20px] bg-white px-4 py-1.5">
+        {open.slice(0, 8).map((p) => (
+          <li key={p.id} className="border-b border-line-soft last:border-0">
+            <Link href={`/money/people/${p.id}`} className="flex min-h-12 items-center justify-between gap-3 py-2 text-ink">
+              <span className="flex min-w-0 flex-col">
+                <span className="truncate font-bold">{p.name}</span>
+                <span className={`text-[13px] ${isOverdue(p, today) ? "font-bold text-coral-text" : "text-muted"}`}>
+                  {p.balance > 0 ? "Owes you" : "You owe"}
+                  {dueDate(p) && ` · ${isOverdue(p, today) ? "was due" : "due"} ${formatShortDay(dueDate(p)!, today)}`}
+                </span>
+              </span>
+              <span className={`font-display text-[17px] font-semibold ${p.balance < 0 ? "text-coral-text" : ""}`}>
+                {formatPeso(Math.abs(p.balance))}
+              </span>
+            </Link>
+          </li>
+        ))}
+        {!open.length && <li className="py-3 text-[15px] text-muted">Nobody owes anybody. All square!</li>}
+      </ul>
+      <div className="grid grid-cols-2 gap-2">
+        <Link href="/money/people/new" className="flex h-11 items-center justify-center rounded-[16px] bg-sun font-extrabold text-ink">+ Lend / borrow</Link>
+        <Link href="/add?split=1" className="flex h-11 items-center justify-center rounded-[16px] border-2 border-sea font-extrabold text-sea-dark">+ Split a bill</Link>
+      </div>
+    </section>
   );
 }
 
