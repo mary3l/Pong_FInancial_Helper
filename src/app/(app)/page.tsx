@@ -3,7 +3,7 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { DisplayNameForm } from "@/components/display-name-form";
 import { ForecastChart } from "@/components/forecast-chart";
-import { MarkPaidButton } from "@/components/mark-paid-button";
+import { LogButton } from "@/components/log-button";
 import { Pong, type PongMood } from "@/components/pong";
 import { TransactionList } from "@/components/transaction-list";
 import { getCurrentUser } from "@/lib/auth";
@@ -15,11 +15,12 @@ import {
   formatShortDay,
   today as getToday,
 } from "@/lib/dates";
-import { project, safeToSpend, type ForecastItem, type SafeToSpend } from "@/lib/forecast";
+import { itemLabel, project, safeToSpend, type ForecastItem, type SafeToSpend } from "@/lib/forecast";
 import { accountTypeLabel, formatPeso } from "@/lib/money";
 
-// Design canvas 2.1: Safe to spend (with its breakdown), Due soon with Mark
-// paid, the next 30 days, wallet balances and recent activity.
+// Design canvas 2.1: Safe to spend (with its breakdown), Coming up (bills and
+// expenses with Mark paid, pay and income with Add income), the next 30 days,
+// wallet balances and recent activity.
 export default function HomePage() {
   return (
     <div className="flex flex-col gap-5">
@@ -77,12 +78,10 @@ async function Dashboard() {
   const sts = safeToSpend({ inWallets, payday, items, today });
   const forecast = project(inWallets, items, today, 30);
   const pong = pongSays(sts, accounts.length > 0, today);
-  // Bills and planned expenses in the next 7 days, plus late planned ones.
+  // Everything scheduled in the next 7 days, plus late planned items.
   const weekOut = addDays(today, 7);
-  const dueSoon = items.filter(
-    (i) => i.kind !== "payday" && i.dueOn < weekOut && (i.dueOn >= today || !i.transactionId),
-  );
-  const hasBills = items.some((i) => i.kind === "bill");
+  const dueSoon = items.filter((i) => i.dueOn < weekOut && (i.dueOn >= today || !i.transactionId));
+  const hasScheduled = items.some((i) => i.kind !== "planned");
 
   return (
     <div className="flex flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)] lg:items-start">
@@ -103,8 +102,8 @@ async function Dashboard() {
 
         <section aria-labelledby="due-heading" className="flex flex-col gap-2.5">
           <div className="flex items-baseline justify-between">
-            <h2 id="due-heading" className="font-display text-xl font-semibold">Due soon</h2>
-            <span className="text-sm font-bold text-muted">next 7 days</span>
+            <h2 id="due-heading" className="font-display text-xl font-semibold">Coming up</h2>
+            <Link href="/plan/scheduled" className="text-sm font-extrabold text-sea">Scheduled ›</Link>
           </div>
           <div className="rounded-[20px] bg-white px-4 py-1.5">
             {dueSoon.length ? (
@@ -115,13 +114,13 @@ async function Dashboard() {
               </ul>
             ) : (
               <p className="py-3 text-[15px] text-muted">
-                {hasBills ? (
-                  "Nothing due in the next 7 days."
+                {hasScheduled ? (
+                  "Nothing coming in or going out in the next 7 days."
                 ) : (
                   <>
-                    No regular bills yet.{" "}
-                    <Link href="/setup/payday?from=settings" className="font-extrabold text-sea-dark underline">
-                      Add your bills
+                    Nothing scheduled yet.{" "}
+                    <Link href="/plan/scheduled" className="font-extrabold text-sea-dark underline">
+                      Add bills, payroll and other income
                     </Link>
                   </>
                 )}
@@ -208,10 +207,11 @@ function DueRow({ item, accounts, today }: { item: ForecastItem; accounts: Accou
   const paid = Boolean(item.transactionId);
   const late = item.dueOn < today && !paid;
   const wallet = accounts.find((a) => a.id === item.accountId);
+  const incoming = item.flow === "in";
   const meta = [
-    item.kind === "bill" ? "Bill" : "Planned",
+    itemLabel(item),
     late ? `Late, was ${formatShortDay(item.dueOn, today)}` : formatRelativeDay(item.dueOn, today),
-    wallet && `from ${wallet.name}`,
+    wallet && `${incoming ? "to" : "from"} ${wallet.name}`,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -222,22 +222,16 @@ function DueRow({ item, accounts, today }: { item: ForecastItem; accounts: Accou
         <span className={`truncate font-bold ${paid ? "text-muted line-through" : ""}`}>{item.name}</span>
         <span className={`text-[13px] ${late ? "font-bold text-coral-text" : "text-muted"}`}>{meta}</span>
       </span>
-      <span className={`font-display text-[17px] font-semibold ${paid ? "text-muted line-through" : ""}`}>
+      <span className={`font-display text-[17px] font-semibold ${paid ? "text-muted line-through" : incoming ? "text-sea" : ""}`}>
         {item.estimate && !paid && (
           <>
             <span aria-hidden="true">~</span>
             <span className="sr-only">about </span>
           </>
         )}
-        {formatPeso(item.amount ?? 0)}
+        {item.amount === null ? "₱?" : `${incoming ? "+" : ""}${formatPeso(item.amount)}`}
       </span>
-      <MarkPaidButton
-        kind={item.kind === "bill" ? "bill" : "planned"}
-        id={item.id}
-        dueOn={item.dueOn}
-        name={item.name}
-        transactionId={item.transactionId}
-      />
+      <LogButton item={item} />
     </li>
   );
 }
@@ -280,8 +274,9 @@ function SafeToSpendCard({ sts, today }: { sts: SafeToSpend; today: string }) {
             />
           </dl>
           <p className="pt-2 text-[13px] leading-snug text-sea-text">
-            Only cash, bank and e-wallets count. Pautang, credit limits and loans never do.
-            A bill stops counting once you mark it paid.
+            Only cash, bank and e-wallets count. Pautang, credit limits and loans never do,
+            and neither does income you haven&apos;t received yet. A bill stops counting once
+            you mark it paid.
           </p>
         </details>
       )}

@@ -35,7 +35,7 @@ async function Payday({ searchParams }: Pick<PageProps<"/setup/payday">, "search
       <PaydayForm
         accounts={accounts}
         payday={items.find((i) => i.kind === "payday") ?? null}
-        bills={items.filter((i) => i.kind === "bill")}
+        bills={items.filter((i) => i.kind === "bill" && i.frequency === "monthly")}
         editing={editing}
       />
     </>

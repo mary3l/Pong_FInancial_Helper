@@ -4,7 +4,7 @@ import { refresh } from "next/cache";
 import { SIGNED_OUT_ERROR, signedInClient } from "@/lib/auth";
 import { EXPENSE_CATEGORIES, isCategoryFor } from "@/lib/categories";
 import { isValidDate, today } from "@/lib/dates";
-import { monthlyDates, splitAmount } from "@/lib/forecast";
+import { monthlyDates, recurringCategory, splitAmount } from "@/lib/forecast";
 import { MAX_AMOUNT, isSpendable, roundCents, type AccountType } from "@/lib/money";
 
 export type PlanResult = { error?: string };
@@ -14,10 +14,10 @@ type Client = NonNullable<Awaited<ReturnType<typeof signedInClient>>>;
 const FAILED = { error: "Couldn't save that. Please try again." };
 
 /**
- * The wallet a payment comes from: the one saved with the bill if it's still
- * in use, else your first cash, bank or e-wallet.
+ * The wallet money comes from or lands in: the one saved with the item if
+ * it's still in use, else your first cash, bank or e-wallet.
  */
-async function payingWallet(supabase: Client, preferred: string | null): Promise<string | null> {
+async function itemWallet(supabase: Client, preferred: string | null): Promise<string | null> {
   const { data } = await supabase
     .from("accounts")
     .select("id, type")
@@ -27,43 +27,53 @@ async function payingWallet(supabase: Client, preferred: string | null): Promise
   return wallets.find((a) => a.id === preferred)?.id ?? wallets[0]?.id ?? null;
 }
 
-async function logExpense(
+async function logTransaction(
   supabase: Client,
-  { amount, accountId, category, note }: { amount: number; accountId: string; category: string; note: string },
+  {
+    type,
+    amount,
+    accountId,
+    category,
+    note,
+  }: { type: "expense" | "income"; amount: number; accountId: string; category: string; note: string },
 ): Promise<string | null> {
   const { data, error } = await supabase
     .from("transactions")
-    .insert({ type: "expense", amount, account_id: accountId, category, note, occurred_on: today() })
+    .insert({ type, amount, account_id: accountId, category, note, occurred_on: today() })
     .select("id")
     .single();
   return error ? null : data.id;
 }
 
+const NO_WALLET = { error: "Add a wallet first, so I know where the money goes." };
+
 /**
- * Mark paid for a bill: logs the expense today and links it to the bill's
- * scheduled date. Undo deletes that transaction, which un-marks the bill.
+ * "Mark paid" for a bill, or "Add income" for a payday or recurring income:
+ * logs the transaction today and links it to the scheduled date. Undo
+ * deletes that transaction, which un-marks the occurrence.
  */
-export async function markBillPaid(recurringItemId: string, dueOn: string): Promise<PlanResult> {
+export async function logRecurring(recurringItemId: string, dueOn: string): Promise<PlanResult> {
   if (!isValidDate(dueOn)) return FAILED;
   const supabase = await signedInClient();
   if (!supabase) return { error: SIGNED_OUT_ERROR };
 
-  const { data: bill } = await supabase
+  const { data: item } = await supabase
     .from("recurring_items")
-    .select("name, amount, account_id")
+    .select("kind, name, amount, account_id, category")
     .eq("id", recurringItemId)
-    .eq("kind", "bill")
     .maybeSingle();
-  if (!bill?.amount) return { error: "Couldn't find that bill." };
+  if (!item) return { error: "Couldn't find that item." };
+  if (!item.amount) return { error: "Set an amount for it first." };
 
-  const accountId = await payingWallet(supabase, bill.account_id);
-  if (!accountId) return { error: "Add a wallet first, so I know where the money came from." };
+  const accountId = await itemWallet(supabase, item.account_id);
+  if (!accountId) return NO_WALLET;
 
-  const txnId = await logExpense(supabase, {
-    amount: Number(bill.amount),
+  const txnId = await logTransaction(supabase, {
+    type: item.kind === "bill" ? "expense" : "income",
+    amount: Number(item.amount),
     accountId,
-    category: "bills",
-    note: bill.name,
+    category: recurringCategory(item),
+    note: item.kind === "payday" ? "Payday" : item.name,
   });
   if (!txnId) return FAILED;
 
@@ -71,7 +81,7 @@ export async function markBillPaid(recurringItemId: string, dueOn: string): Prom
     .from("bill_payments")
     .insert({ recurring_item_id: recurringItemId, due_on: dueOn, transaction_id: txnId });
   if (error) {
-    // Already marked (another tab?): don't leave a second expense behind.
+    // Already logged (another tab?): don't leave a second transaction behind.
     await supabase.from("transactions").delete().eq("id", txnId);
     if (error.code !== "23505") return FAILED;
   }
@@ -80,26 +90,27 @@ export async function markBillPaid(recurringItemId: string, dueOn: string): Prom
   return {};
 }
 
-/** Mark paid for a planned expense: logs it today and links the two. */
-export async function markPlannedPaid(id: string): Promise<PlanResult> {
+/** "Mark paid" or "Add income" for a planned item: logs it today and links the two. */
+export async function logPlanned(id: string): Promise<PlanResult> {
   const supabase = await signedInClient();
   if (!supabase) return { error: SIGNED_OUT_ERROR };
 
   const { data: planned } = await supabase
     .from("planned_expenses")
-    .select("name, amount, category, account_id, transaction_id")
+    .select("type, name, amount, category, account_id, transaction_id")
     .eq("id", id)
     .maybeSingle();
-  if (!planned) return { error: "Couldn't find that planned expense." };
+  if (!planned) return { error: "Couldn't find that planned item." };
   if (planned.transaction_id) {
     refresh();
     return {};
   }
 
-  const accountId = await payingWallet(supabase, planned.account_id);
-  if (!accountId) return { error: "Add a wallet first, so I know where the money came from." };
+  const accountId = await itemWallet(supabase, planned.account_id);
+  if (!accountId) return NO_WALLET;
 
-  const txnId = await logExpense(supabase, {
+  const txnId = await logTransaction(supabase, {
+    type: planned.type === "income" ? "income" : "expense",
     amount: Number(planned.amount),
     accountId,
     category: planned.category,
@@ -155,17 +166,6 @@ export async function addPlannedExpense(input: PlannedInput): Promise<PlanResult
   }));
   const { error } = await supabase.from("planned_expenses").insert(rows);
   if (error) return FAILED;
-
-  refresh();
-  return {};
-}
-
-export async function removePlannedExpense(id: string): Promise<PlanResult> {
-  const supabase = await signedInClient();
-  if (!supabase) return { error: SIGNED_OUT_ERROR };
-
-  const { data, error } = await supabase.from("planned_expenses").delete().eq("id", id).select("id");
-  if (error || !data.length) return { error: "Couldn't remove that. Please try again." };
 
   refresh();
   return {};

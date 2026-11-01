@@ -1,9 +1,11 @@
 import Link from "next/link";
 
-// Plan = Forecast + Budgets, as tabs at the top (design canvas 3.1, 3.3).
-export function PlanTabs({ current }: { current: "forecast" | "budgets" }) {
+// Plan = Forecast + Scheduled + Budgets, as tabs at the top (design canvas
+// 3.1, 3.3). Scheduled holds recurring and planned income and expenses.
+export function PlanTabs({ current }: { current: "forecast" | "scheduled" | "budgets" }) {
   const tabs = [
     { key: "forecast", href: "/plan", label: "Forecast" },
+    { key: "scheduled", href: "/plan/scheduled", label: "Scheduled" },
     { key: "budgets", href: "/plan/budgets", label: "Budgets" },
   ] as const;
   return (

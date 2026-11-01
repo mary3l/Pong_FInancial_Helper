@@ -5,42 +5,49 @@ import { nextOccurrence, occurrences, type Schedule } from "@/lib/schedule";
 // The forecast (design canvas 3.1), Safe to spend and "Can I afford this?".
 // Pure, so the server and the browser share it.
 //
-// Only cash, bank and e-wallet money is counted. Bills and planned expenses
-// count until Mark paid logs the real expense: then the wallet balance
-// already reflects it and the item drops out.
+// Only cash, bank and e-wallet money is counted. Scheduled items count until
+// they're logged ("Mark paid" or "Add income"): then the wallet balance
+// already reflects them and the item drops out.
+
+export type ForecastKind = "payday" | "income" | "bill" | "planned";
 
 /** Something scheduled to move money on a date. */
 export type ForecastItem = {
   /** Unique within one forecast. */
   key: string;
-  kind: "payday" | "bill" | "planned";
+  kind: ForecastKind;
+  /** Money coming in (pay, income) or going out (bills, expenses). */
+  flow: "in" | "out";
   /** The recurring_items or planned_expenses row. */
   id: string;
   name: string;
   /** Always positive. Null for a payday with no net pay saved. */
   amount: number | null;
-  /** The scheduled date. A late planned expense keeps its own date. */
+  /** The scheduled date. A late planned item keeps its own date. */
   dueOn: string;
   accountId: string | null;
   category: string | null;
-  /** Bills whose amount changes, like electricity. */
+  /** Amounts that change, like electricity. */
   estimate: boolean;
-  /** Set once Mark paid logged the expense. */
+  /** Set once it was logged as a real transaction. */
   transactionId: string | null;
 };
 
 export type ScheduleInputs = {
   recurring: (Schedule & {
     id: string;
-    kind: "payday" | "bill";
+    kind: "payday" | "bill" | "income";
     name: string;
     amount: number | null;
     amountVaries: boolean;
     accountId: string | null;
+    category: string | null;
+    endsOn: string | null;
   })[];
   billPayments: { recurringItemId: string; dueOn: string; transactionId: string }[];
   planned: {
     id: string;
+    type: "expense" | "income";
     name: string;
     amount: number;
     category: string;
@@ -50,34 +57,40 @@ export type ScheduleInputs = {
   }[];
 };
 
+/** The category a recurring item logs under when it has none saved. */
+export function recurringCategory(r: { kind: "payday" | "bill" | "income"; category: string | null }): string {
+  if (r.category) return r.category;
+  return r.kind === "bill" ? "bills" : r.kind === "payday" ? "salary" : "other_income";
+}
+
 /**
- * Every payday, bill and planned expense from `from` up to but not including
- * `until`, by date. Paydays start the day after `from`: today's pay is
- * assumed already logged. Unpaid planned expenses from before `from` are
- * included too, since they're still owed.
+ * Every payday, recurring item and planned item from `from` up to but not
+ * including `until`, by date. Unlogged planned items from before `from` are
+ * included too, since they're still expected.
  */
 export function scheduledItems(
   { recurring, billPayments, planned }: ScheduleInputs,
   from: string,
   until: string,
 ): ForecastItem[] {
-  const paidBills = new Map(billPayments.map((p) => [`${p.recurringItemId}|${p.dueOn}`, p.transactionId]));
+  const logged = new Map(billPayments.map((p) => [`${p.recurringItemId}|${p.dueOn}`, p.transactionId]));
   const items: ForecastItem[] = [];
 
   for (const r of recurring) {
-    const start = r.kind === "payday" ? addDays(from, 1) : from;
-    for (const date of occurrences(r, start, until)) {
+    const end = r.endsOn && r.endsOn < until ? addDays(r.endsOn, 1) : until;
+    for (const date of occurrences(r, from, end)) {
       items.push({
         key: `${r.kind}|${r.id}|${date}`,
         kind: r.kind,
+        flow: r.kind === "bill" ? "out" : "in",
         id: r.id,
         name: r.kind === "payday" ? "Payday" : r.name,
         amount: r.amount,
         dueOn: date,
         accountId: r.accountId,
-        category: r.kind === "bill" ? "bills" : "salary",
+        category: recurringCategory(r),
         estimate: r.amountVaries,
-        transactionId: r.kind === "bill" ? (paidBills.get(`${r.id}|${date}`) ?? null) : null,
+        transactionId: logged.get(`${r.id}|${date}`) ?? null,
       });
     }
   }
@@ -88,6 +101,7 @@ export function scheduledItems(
     items.push({
       key: `planned|${p.id}`,
       kind: "planned",
+      flow: p.type === "income" ? "in" : "out",
       id: p.id,
       name: p.name,
       amount: p.amount,
@@ -99,18 +113,36 @@ export function scheduledItems(
     });
   }
 
+  return sortItems(items);
+}
+
+export function sortItems(items: ForecastItem[]): ForecastItem[] {
   return items.sort((a, b) => a.dueOn.localeCompare(b.dueOn) || a.name.localeCompare(b.name));
 }
 
-/** What an item does to your wallets: + for pay, − for money out, 0 once paid. */
+/** What an item does to your wallets: + for money in, − for money out, 0 once logged. */
 export function itemEffect(item: ForecastItem): number {
   if (item.amount === null || item.transactionId) return 0;
-  return item.kind === "payday" ? item.amount : -item.amount;
+  return item.flow === "in" ? item.amount : -item.amount;
 }
 
-/** Unpaid bills and planned expenses: what you still owe. */
+/** Unlogged money going out: what you still owe. */
 export function isOwed(item: ForecastItem): boolean {
-  return item.kind !== "payday" && !item.transactionId;
+  return item.flow === "out" && !item.transactionId;
+}
+
+/** "Bill", "Planned income", … for lists. */
+export function itemLabel(item: Pick<ForecastItem, "kind" | "flow">): string {
+  switch (item.kind) {
+    case "payday":
+      return "Pay";
+    case "income":
+      return "Income";
+    case "bill":
+      return "Bill";
+    case "planned":
+      return item.flow === "in" ? "Planned income" : "Planned";
+  }
 }
 
 export type DayBalance = { date: string; balance: number };
@@ -243,6 +275,7 @@ export function purchaseItems(p: Purchase): ForecastItem[] {
   return monthlyDates(p.first, p.months).map((date, i) => ({
     key: `purchase|${i}`,
     kind: "planned",
+    flow: "out",
     id: `purchase-${i}`,
     name: p.months > 1 ? `${p.name} (${i + 1} of ${p.months})` : p.name,
     amount: amounts[i],

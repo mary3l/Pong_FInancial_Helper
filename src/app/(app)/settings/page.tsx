@@ -21,6 +21,11 @@ export default function SettingsPage() {
         <Suspense fallback={<Row title="Payday & bills" href="/setup/payday?from=settings" />}>
           <PaydayRow />
         </Suspense>
+        <Row
+          title="Scheduled income & expenses"
+          detail="Payroll, allowance, rent, tuition: once or on repeat"
+          href="/plan/scheduled"
+        />
         <Suspense fallback={<Row title="Budgets" href="/plan/budgets" />}>
           <BudgetsRow />
         </Suspense>

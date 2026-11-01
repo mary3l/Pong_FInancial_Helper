@@ -5,18 +5,18 @@ import { Pong, type PongMood } from "@/components/pong";
 import { categoryInfo } from "@/lib/categories";
 import { getPlanInputs } from "@/lib/data";
 import { addDays, formatShortDay, today as getToday } from "@/lib/dates";
-import { itemEffect, lowestBetween, project, type DayBalance } from "@/lib/forecast";
+import { itemEffect, itemLabel, lowestBetween, project, type DayBalance } from "@/lib/forecast";
 import { formatPeso } from "@/lib/money";
 import { nextOccurrence } from "@/lib/schedule";
 import { PlanTabs, SegmentLinks } from "./plan-tabs";
-import { RemovePlannedButton } from "./remove-planned-button";
+import { LogButton } from "@/components/log-button";
 
 export const metadata = { title: "Plan · Pong Money" };
 
 const RANGES = [30, 60, 90];
 
-// Design canvas 3.1: projected balance from bills, paydays and planned
-// expenses, and the low point before payday.
+// Design canvas 3.1: projected balance from paydays, recurring and planned
+// income and expenses, and the low point before payday.
 export default function ForecastPage({ searchParams }: PageProps<"/plan">) {
   return (
     <div className="flex flex-col gap-4 lg:max-w-5xl">
@@ -50,6 +50,7 @@ async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams
   const forecast = project(inWallets, items, today, days);
   const nextPayday = payday ? nextOccurrence(payday, today) : null;
   const paydays = items.filter((i) => i.kind === "payday").map((i) => i.dueOn);
+  const weekOut = addDays(today, 7);
   const lowBeforePayday = nextPayday ? lowestBetween(forecast.days, today, nextPayday) : null;
   const headsUp = lowBeforePayday ?? forecast.lowest;
   const pong = headsUpMood(headsUp, inWallets);
@@ -141,11 +142,12 @@ async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams
                       {item.amount === null ? "amount not set" : `${change > 0 ? "+" : "−"}${formatPeso(item.amount)}`}
                     </span>
                     <span className="text-[13px] text-muted">
-                      {item.kind === "planned" ? `Planned · ${categoryInfo("expense", item.category).label}` : item.kind === "bill" ? "Bill" : "Pay"}
+                      {itemLabel(item)}
+                      {item.category && item.kind !== "payday" && ` · ${categoryInfo(item.flow === "in" ? "income" : "expense", item.category).label}`}
                       {" · "}balance after{" "}
                       <span className={balanceAfter < 0 ? "font-bold text-coral-text" : ""}>{formatPeso(balanceAfter)}</span>
                     </span>
-                    {item.kind === "planned" ? <RemovePlannedButton id={item.id} name={item.name} /> : <span />}
+                    {date < weekOut ? <LogButton item={item} /> : <span />}
                   </li>
                 );
               })}
@@ -153,12 +155,13 @@ async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams
           ) : (
             <p className="py-3 text-[15px] text-muted">
               Nothing scheduled in the next {days} days.{" "}
-              <Link href="/setup/payday?from=settings" className="font-extrabold text-sea-dark underline">Add payday &amp; bills</Link>
+              <Link href="/plan/scheduled" className="font-extrabold text-sea-dark underline">Add income &amp; expenses</Link>
             </p>
           )}
         </div>
         <p className="text-xs text-muted">
-          Counts cash, bank and e-wallets. Bills you&apos;ve marked paid are already in your balance.
+          Counts cash, bank and e-wallets. Anything you&apos;ve marked paid or added is already in your
+          balance. <Link href="/plan/scheduled" className="font-extrabold text-sea-dark underline">Manage scheduled</Link>
         </p>
       </section>
     </div>

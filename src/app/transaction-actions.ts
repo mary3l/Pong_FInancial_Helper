@@ -54,10 +54,15 @@ function validate(input: TransactionInput) {
   };
 }
 
-/** Creates a transaction, or updates it when `id` is given. */
+/**
+ * Creates a transaction, or updates it when `id` is given. `link` is
+ * "<recurring item id>|<date>" when it logs a scheduled occurrence (Add
+ * income for a payday with no amount saved).
+ */
 export async function saveTransaction(
   input: TransactionInput,
   id?: string,
+  link?: string,
 ): Promise<ActionResult> {
   const checked = validate(input);
   if (!checked.row) return { error: checked.error };
@@ -71,6 +76,22 @@ export async function saveTransaction(
     : await supabase.from("transactions").insert(checked.row).select("id");
   if (error || !data?.length) {
     return { error: "Couldn't save that. Please try again." };
+  }
+
+  if (link && !id) {
+    const [itemId, dueOn] = link.split("|");
+    const linked = isValidDate(dueOn)
+      ? await supabase
+          .from("bill_payments")
+          .insert({ recurring_item_id: itemId, due_on: dueOn, transaction_id: data[0].id })
+      : { error: { code: "invalid" } };
+    if (linked.error) {
+      // Logged already (another tab?): don't count it twice.
+      await supabase.from("transactions").delete().eq("id", data[0].id);
+      return {
+        error: linked.error.code === "23505" ? "That's already logged." : "Couldn't save that. Please try again.",
+      };
+    }
   }
 
   refresh();

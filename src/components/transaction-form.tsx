@@ -38,6 +38,17 @@ const TITLES: Record<TransactionType, string> = {
   transfer: "Move money",
 };
 
+/** Values to start Add with, e.g. from "Add income" on a scheduled payday. */
+export type Prefill = {
+  type: "expense" | "income";
+  amount: number | null;
+  category: string | null;
+  accountId: string | null;
+  note: string;
+  /** "<recurring item id>|<date>": saving logs that occurrence. */
+  link: string | null;
+};
+
 type KeyDef = { key: Key; label: string; kind: "num" | "op" | "fn" | "eq"; className?: string };
 
 const KEYS: KeyDef[] = [
@@ -75,6 +86,7 @@ export function TransactionForm({
   today,
   mode,
   closeHref = "/",
+  prefill,
 }: {
   accounts: Account[];
   templates: Template[];
@@ -84,27 +96,32 @@ export function TransactionForm({
   /** "modal" closes with router.back(); "page" goes to `closeHref`. */
   mode: "modal" | "page";
   closeHref?: string;
+  prefill?: Prefill;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const editing = Boolean(transaction);
 
-  const defaultFrom = templates[0]?.accountId ?? accounts[0]?.id ?? "";
-  const [type, setType] = useState<TransactionType>(transaction?.type ?? "expense");
+  const prefillAccount = accounts.find((a) => a.id === prefill?.accountId)?.id;
+  const defaultFrom = prefillAccount ?? templates[0]?.accountId ?? accounts[0]?.id ?? "";
+  const [type, setType] = useState<TransactionType>(transaction?.type ?? prefill?.type ?? "expense");
+  const startAmount = transaction?.amount ?? prefill?.amount;
   const [calc, setCalc] = useState<{ expr: string; error: string | null }>({
-    expr: transaction ? amountToExpression(transaction.amount) : "",
+    expr: startAmount ? amountToExpression(startAmount) : "",
     error: null,
   });
+  const prefillCategory = (t: "expense" | "income") =>
+    prefill?.type === t && prefill.category ? prefill.category : null;
   const [categories, setCategories] = useState({
-    expense: transaction?.type === "expense" ? transaction.category : "food",
-    income: transaction?.type === "income" ? transaction.category : "salary",
+    expense: transaction?.type === "expense" ? transaction.category : (prefillCategory("expense") ?? "food"),
+    income: transaction?.type === "income" ? transaction.category : (prefillCategory("income") ?? "salary"),
   });
   const [accountId, setAccountId] = useState(transaction?.accountId ?? defaultFrom);
   const [toAccountId, setToAccountId] = useState(
     transaction?.toAccountId ?? accounts.find((a) => a.id !== defaultFrom)?.id ?? "",
   );
   const [date, setDate] = useState(transaction?.occurredOn ?? today);
-  const [note, setNote] = useState(transaction?.note ?? "");
+  const [note, setNote] = useState(transaction?.note ?? prefill?.note ?? "");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -170,6 +187,8 @@ export function TransactionForm({
       const result = await saveTransaction(
         { type, amount, accountId, toAccountId: type === "transfer" ? toAccountId : null, category, note, occurredOn: date },
         transaction?.id,
+        // The link only holds for the type it was opened with.
+        prefill?.link && type === prefill.type ? prefill.link : undefined,
       );
       if (result.error) setSaveError(result.error);
       else close();

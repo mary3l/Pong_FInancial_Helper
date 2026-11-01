@@ -67,7 +67,12 @@ export async function savePaydayAndBills(input: PaydayInput): Promise<SetupResul
     if (error) return failed;
   }
 
-  const existing = await supabase.from("recurring_items").select("id").eq("kind", "bill");
+  // Only monthly bills are edited here; Plan › Scheduled handles the rest.
+  const existing = await supabase
+    .from("recurring_items")
+    .select("id")
+    .eq("kind", "bill")
+    .eq("frequency", "monthly");
   if (existing.error) return failed;
   const keep = new Set(input.bills.flatMap((b) => (b.id ? [b.id] : [])));
   const removed = existing.data.map((b) => b.id).filter((id) => !keep.has(id));
