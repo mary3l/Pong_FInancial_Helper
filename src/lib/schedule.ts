@@ -1,10 +1,4 @@
-import {
-  addDays,
-  dateInMonth,
-  daysBetween,
-  weekdayOf,
-} from "@/lib/dates";
-import { roundCents } from "@/lib/money";
+import { addDays, dateInMonth, weekdayOf } from "@/lib/dates";
 
 // Payday and bill schedules (recurring_items). See 0002_recurring_items.sql.
 
@@ -76,54 +70,4 @@ export function describeSchedule(s: Schedule): string {
   if (s.frequency === "weekly") return `Every ${WEEKDAYS[s.day1]}`;
   if (s.frequency === "monthly") return `Every ${ordinal(s.day1)}`;
   return `Every ${ordinal(s.day1)} & ${ordinal(s.day2!)}`;
-}
-
-export type SafeToSpend = {
-  /** Spendable money across cash, bank and e-wallets. */
-  inWallets: number;
-  /** Bills scheduled from today until the day before payday. */
-  dueBeforePayday: number;
-  nextPayday: string | null;
-  /** Days from today until payday, counting today. */
-  daysLeft: number | null;
-  /** What's free per day until payday; null without a payday. */
-  perDay: number | null;
-};
-
-/**
- * Basic Safe to spend (Phase 1): wallet money, minus bills due before the
- * next payday, spread over the days until then. Pautang, credit limits and
- * loans never count. Bills are assumed unpaid until Mark paid arrives in
- * Phase 2, so a bill paid early is subtracted until its due date passes.
- */
-export function safeToSpend({
-  inWallets,
-  payday,
-  bills,
-  today,
-}: {
-  inWallets: number;
-  payday: Schedule | null;
-  bills: { amount: number; schedule: Schedule }[];
-  today: string;
-}): SafeToSpend {
-  if (!payday) {
-    return { inWallets, dueBeforePayday: 0, nextPayday: null, daysLeft: null, perDay: null };
-  }
-  const nextPayday = nextOccurrence(payday, today);
-  const daysLeft = daysBetween(today, nextPayday);
-  const due = roundCents(
-    bills.reduce(
-      (sum, b) => sum + b.amount * occurrences(b.schedule, today, nextPayday).length,
-      0,
-    ),
-  );
-  const free = inWallets - due;
-  return {
-    inWallets,
-    dueBeforePayday: due,
-    nextPayday,
-    daysLeft,
-    perDay: free > 0 ? Math.floor(free / daysLeft) : 0,
-  };
 }

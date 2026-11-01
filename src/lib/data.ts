@@ -1,6 +1,8 @@
 import "server-only";
 import { connection } from "next/server";
-import { type AccountType, type TransactionType } from "@/lib/money";
+import { addDays } from "@/lib/dates";
+import { scheduledItems, type ForecastItem } from "@/lib/forecast";
+import { isSpendable, roundCents, type AccountType, type TransactionType } from "@/lib/money";
 import type { Frequency } from "@/lib/schedule";
 import { createClient } from "@/lib/supabase/server";
 
@@ -38,6 +40,24 @@ export type RecurringItem = {
   day1: number;
   day2: number | null;
 };
+
+export type BillPayment = {
+  recurringItemId: string;
+  dueOn: string;
+  transactionId: string;
+};
+
+export type PlannedExpense = {
+  id: string;
+  name: string;
+  amount: number;
+  category: string;
+  dueOn: string;
+  accountId: string | null;
+  transactionId: string | null;
+};
+
+export type Budget = { id: string; category: string; amount: number };
 
 /** A recent expense, income or transfer to repeat with one tap in Add. */
 export type Template = Omit<Transaction, "id" | "occurredOn">;
@@ -103,6 +123,78 @@ export async function getRecurringItems(): Promise<RecurringItem[]> {
     day1: r.day1,
     day2: r.day2,
   }));
+}
+
+/** Bill payments for scheduled dates on or after `from`. */
+export async function getBillPayments(from: string): Promise<BillPayment[]> {
+  const supabase = await db();
+  const { data, error } = await supabase
+    .from("bill_payments")
+    .select("recurring_item_id, due_on, transaction_id")
+    .gte("due_on", from);
+  if (error) throw dbError(error);
+  return data.map((p) => ({
+    recurringItemId: p.recurring_item_id,
+    dueOn: p.due_on,
+    transactionId: p.transaction_id,
+  }));
+}
+
+/** Planned expenses due on or after `from`, plus any still unpaid from before. */
+export async function getPlannedExpenses(from: string): Promise<PlannedExpense[]> {
+  const supabase = await db();
+  const { data, error } = await supabase
+    .from("planned_expenses")
+    .select("id, name, amount, category, due_on, account_id, transaction_id")
+    .or(`due_on.gte.${from},transaction_id.is.null`)
+    .order("due_on");
+  if (error) throw dbError(error);
+  return data.map((p) => ({
+    id: p.id,
+    name: p.name,
+    amount: Number(p.amount),
+    category: p.category,
+    dueOn: p.due_on,
+    accountId: p.account_id,
+    transactionId: p.transaction_id,
+  }));
+}
+
+export async function getBudgets(): Promise<Budget[]> {
+  const supabase = await db();
+  const { data, error } = await supabase
+    .from("budgets")
+    .select("id, category, amount")
+    .order("created_at");
+  if (error) throw dbError(error);
+  return data.map((b) => ({ id: b.id, category: b.category, amount: Number(b.amount) }));
+}
+
+export type PlanInputs = {
+  accounts: Account[];
+  /** Money in cash, bank and e-wallets right now. */
+  inWallets: number;
+  payday: RecurringItem | null;
+  /** Paydays, bills and planned expenses from today for `days` days. */
+  items: ForecastItem[];
+};
+
+/** Everything the forecast, Safe to spend and Due soon work from. */
+export async function getPlanInputs(today: string, days: number): Promise<PlanInputs> {
+  const [accounts, recurring, billPayments, planned] = await Promise.all([
+    getAccounts(),
+    getRecurringItems(),
+    getBillPayments(today),
+    getPlannedExpenses(today),
+  ]);
+  return {
+    accounts,
+    inWallets: roundCents(
+      accounts.filter((a) => isSpendable(a.type)).reduce((sum, a) => sum + a.balance, 0),
+    ),
+    payday: recurring.find((r) => r.kind === "payday") ?? null,
+    items: scheduledItems({ recurring, billPayments, planned }, today, addDays(today, days)),
+  };
 }
 
 const TXN_COLUMNS = "id, type, amount, account_id, to_account_id, category, note, occurred_on";

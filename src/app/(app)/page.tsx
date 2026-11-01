@@ -1,15 +1,25 @@
 import Link from "next/link";
+import { connection } from "next/server";
 import { Suspense } from "react";
 import { DisplayNameForm } from "@/components/display-name-form";
+import { ForecastChart } from "@/components/forecast-chart";
+import { MarkPaidButton } from "@/components/mark-paid-button";
 import { Pong, type PongMood } from "@/components/pong";
 import { TransactionList } from "@/components/transaction-list";
 import { getCurrentUser } from "@/lib/auth";
-import { getAccounts, getRecurringItems, getTransactions } from "@/lib/data";
-import { formatLongDay, formatShortDay, today as getToday } from "@/lib/dates";
-import { accountTypeLabel, formatPeso, isSpendable, roundCents } from "@/lib/money";
-import { safeToSpend, type SafeToSpend } from "@/lib/schedule";
+import { getPlanInputs, getTransactions, type Account } from "@/lib/data";
+import {
+  addDays,
+  formatLongDay,
+  formatRelativeDay,
+  formatShortDay,
+  today as getToday,
+} from "@/lib/dates";
+import { project, safeToSpend, type ForecastItem, type SafeToSpend } from "@/lib/forecast";
+import { accountTypeLabel, formatPeso } from "@/lib/money";
 
-// Design canvas 2.1: Safe to spend, wallet balances and recent activity.
+// Design canvas 2.1: Safe to spend (with its breakdown), Due soon with Mark
+// paid, the next 30 days, wallet balances and recent activity.
 export default function HomePage() {
   return (
     <div className="flex flex-col gap-5">
@@ -36,7 +46,7 @@ async function Header() {
         </div>
         <Link
           href="/settings"
-          aria-label="Settings and account"
+          aria-label="Settings and tools"
           className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-sun font-display text-lg font-semibold text-ink"
         >
           {user.name ? user.name.charAt(0).toUpperCase() : <PersonIcon />}
@@ -57,24 +67,22 @@ async function Header() {
 }
 
 async function Dashboard() {
-  const [accounts, items, recent] = await Promise.all([
-    getAccounts(),
-    getRecurringItems(),
+  // Read the clock only at request time (Cache Components).
+  await connection();
+  const today = getToday();
+  const [{ accounts, inWallets, payday, items }, recent] = await Promise.all([
+    getPlanInputs(today, 30),
     getTransactions({ limit: 6 }),
   ]);
-  const today = getToday();
-  const payday = items.find((i) => i.kind === "payday") ?? null;
-  const sts = safeToSpend({
-    inWallets: roundCents(
-      accounts.filter((a) => isSpendable(a.type)).reduce((sum, a) => sum + a.balance, 0),
-    ),
-    payday,
-    bills: items
-      .filter((i) => i.kind === "bill" && i.amount !== null)
-      .map((b) => ({ amount: b.amount!, schedule: b })),
-    today,
-  });
+  const sts = safeToSpend({ inWallets, payday, items, today });
+  const forecast = project(inWallets, items, today, 30);
   const pong = pongSays(sts, accounts.length > 0, today);
+  // Bills and planned expenses in the next 7 days, plus late planned ones.
+  const weekOut = addDays(today, 7);
+  const dueSoon = items.filter(
+    (i) => i.kind !== "payday" && i.dueOn < weekOut && (i.dueOn >= today || !i.transactionId),
+  );
+  const hasBills = items.some((i) => i.kind === "bill");
 
   return (
     <div className="flex flex-col gap-5 lg:grid lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)] lg:items-start">
@@ -92,6 +100,35 @@ async function Dashboard() {
         </div>
 
         <SafeToSpendCard sts={sts} today={today} />
+
+        <section aria-labelledby="due-heading" className="flex flex-col gap-2.5">
+          <div className="flex items-baseline justify-between">
+            <h2 id="due-heading" className="font-display text-xl font-semibold">Due soon</h2>
+            <span className="text-sm font-bold text-muted">next 7 days</span>
+          </div>
+          <div className="rounded-[20px] bg-white px-4 py-1.5">
+            {dueSoon.length ? (
+              <ul className="flex flex-col">
+                {dueSoon.map((item) => (
+                  <DueRow key={item.key} item={item} accounts={accounts} today={today} />
+                ))}
+              </ul>
+            ) : (
+              <p className="py-3 text-[15px] text-muted">
+                {hasBills ? (
+                  "Nothing due in the next 7 days."
+                ) : (
+                  <>
+                    No regular bills yet.{" "}
+                    <Link href="/setup/payday?from=settings" className="font-extrabold text-sea-dark underline">
+                      Add your bills
+                    </Link>
+                  </>
+                )}
+              </p>
+            )}
+          </div>
+        </section>
 
         <section aria-labelledby="wallets-heading" className="flex flex-col gap-2.5">
           <div className="flex items-baseline justify-between">
@@ -120,22 +157,88 @@ async function Dashboard() {
         </section>
       </div>
 
-      <section aria-labelledby="recent-heading" className="flex flex-col gap-2.5">
-        <div className="flex items-baseline justify-between">
-          <h2 id="recent-heading" className="font-display text-xl font-semibold">Recent activity</h2>
-          <Link href="/activity" className="text-sm font-extrabold text-sea">See all ›</Link>
-        </div>
-        <div className="rounded-[20px] bg-white px-4 py-1.5">
-          {recent.length ? (
-            <TransactionList transactions={recent} accounts={accounts} today={today} grouped={false} />
-          ) : (
-            <p className="py-3 text-[15px] text-muted">
-              Nothing logged yet. Tap <strong className="text-ink">+</strong> to add your first expense.
-            </p>
-          )}
-        </div>
-      </section>
+      <div className="flex flex-col gap-5">
+        {accounts.length > 0 && (
+          <Link
+            href="/plan"
+            className="flex flex-col gap-2.5 rounded-[20px] bg-white px-4 py-3.5 text-ink hover:ring-2 hover:ring-sea-tint"
+          >
+            <span className="flex items-baseline justify-between">
+              <span className="font-display text-xl font-semibold">Next 30 days</span>
+              <span className="text-sm font-extrabold text-sea">Forecast ›</span>
+            </span>
+            <ForecastChart
+              days={forecast.days}
+              low={forecast.lowest}
+              paydays={items.filter((i) => i.kind === "payday").map((i) => i.dueOn)}
+              height={64}
+              label={`Projected balance for the next 30 days. Lowest ${formatPeso(forecast.lowest.balance)} on ${formatShortDay(forecast.lowest.date, today)}.`}
+            />
+            <span className="text-[15px]">
+              Lowest:{" "}
+              <strong className={forecast.lowest.balance < 0 ? "text-coral-text" : ""}>
+                {formatPeso(forecast.lowest.balance)} on {formatShortDay(forecast.lowest.date, today)}
+              </strong>
+              {sts.nextPayday && forecast.lowest.date === addDays(sts.nextPayday, -1) && ", the day before payday"}
+            </span>
+          </Link>
+        )}
+
+        <section aria-labelledby="recent-heading" className="flex flex-col gap-2.5">
+          <div className="flex items-baseline justify-between">
+            <h2 id="recent-heading" className="font-display text-xl font-semibold">Recent activity</h2>
+            <Link href="/activity" className="text-sm font-extrabold text-sea">See all ›</Link>
+          </div>
+          <div className="rounded-[20px] bg-white px-4 py-1.5">
+            {recent.length ? (
+              <TransactionList transactions={recent} accounts={accounts} today={today} grouped={false} />
+            ) : (
+              <p className="py-3 text-[15px] text-muted">
+                Nothing logged yet. Tap <strong className="text-ink">+</strong> to add your first expense.
+              </p>
+            )}
+          </div>
+        </section>
+      </div>
     </div>
+  );
+}
+
+function DueRow({ item, accounts, today }: { item: ForecastItem; accounts: Account[]; today: string }) {
+  const paid = Boolean(item.transactionId);
+  const late = item.dueOn < today && !paid;
+  const wallet = accounts.find((a) => a.id === item.accountId);
+  const meta = [
+    item.kind === "bill" ? "Bill" : "Planned",
+    late ? `Late, was ${formatShortDay(item.dueOn, today)}` : formatRelativeDay(item.dueOn, today),
+    wallet && `from ${wallet.name}`,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  return (
+    <li className="flex items-center gap-3 border-b border-line-soft py-2.5 last:border-0">
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className={`truncate font-bold ${paid ? "text-muted line-through" : ""}`}>{item.name}</span>
+        <span className={`text-[13px] ${late ? "font-bold text-coral-text" : "text-muted"}`}>{meta}</span>
+      </span>
+      <span className={`font-display text-[17px] font-semibold ${paid ? "text-muted line-through" : ""}`}>
+        {item.estimate && !paid && (
+          <>
+            <span aria-hidden="true">~</span>
+            <span className="sr-only">about </span>
+          </>
+        )}
+        {formatPeso(item.amount ?? 0)}
+      </span>
+      <MarkPaidButton
+        kind={item.kind === "bill" ? "bill" : "planned"}
+        id={item.id}
+        dueOn={item.dueOn}
+        name={item.name}
+        transactionId={item.transactionId}
+      />
+    </li>
   );
 }
 
@@ -156,18 +259,52 @@ function SafeToSpendCard({ sts, today }: { sts: SafeToSpend; today: string }) {
           : "Set your payday to see a daily amount."}
       </p>
       {hasPayday && (
-        <div className="relative mt-2.5 grid grid-cols-2 gap-2">
-          <div className="flex flex-col gap-0.5 rounded-[14px] bg-sea-dark px-3 py-2.5">
-            <span className="text-xs text-sea-text">In wallets</span>
-            <span className="font-display text-lg font-semibold">{formatPeso(sts.inWallets)}</span>
-          </div>
-          <div className="flex flex-col gap-0.5 rounded-[14px] bg-sea-dark px-3 py-2.5">
-            <span className="text-xs text-sea-text">Bills before payday</span>
-            <span className="font-display text-lg font-semibold">{formatPeso(sts.dueBeforePayday)}</span>
-          </div>
-        </div>
+        <details className="group relative">
+          <summary className="flex h-11 w-fit cursor-pointer list-none items-center text-[15px] font-extrabold text-white underline underline-offset-4 [&::-webkit-details-marker]:hidden">
+            <span className="group-open:hidden">How is this computed?</span>
+            <span className="hidden group-open:inline">Hide breakdown</span>
+          </summary>
+          <dl className="flex flex-col gap-1.5 rounded-[18px] bg-sea-dark px-4 py-3.5 text-[15px]">
+            <BreakdownLine label="In your wallets" value={formatPeso(sts.inWallets)} />
+            <BreakdownLine label={`− Due before payday (${sts.dueCount})`} value={formatPeso(sts.dueBeforePayday)} />
+            <BreakdownLine
+              label={`= Free until ${formatShortDay(sts.nextPayday!, today)}`}
+              value={formatPeso(sts.free)}
+              strong
+              divider
+            />
+            <BreakdownLine
+              label={`÷ ${sts.daysLeft} ${sts.daysLeft === 1 ? "day" : "days"}`}
+              value={`${formatPeso(sts.perDay!)} / day`}
+              strong
+            />
+          </dl>
+          <p className="pt-2 text-[13px] leading-snug text-sea-text">
+            Only cash, bank and e-wallets count. Pautang, credit limits and loans never do.
+            A bill stops counting once you mark it paid.
+          </p>
+        </details>
       )}
     </section>
+  );
+}
+
+function BreakdownLine({
+  label,
+  value,
+  strong = false,
+  divider = false,
+}: {
+  label: string;
+  value: string;
+  strong?: boolean;
+  divider?: boolean;
+}) {
+  return (
+    <div className={`flex justify-between gap-3 ${strong ? "font-extrabold" : ""} ${divider ? "border-t border-sea-light pt-1.5" : ""}`}>
+      <dt>{label}</dt>
+      <dd>{value}</dd>
+    </div>
   );
 }
 
@@ -193,7 +330,8 @@ function pongSays(
   if (sts.perDay === 0) {
     return {
       mood: "worried",
-      message: `Bills before payday are more than what's in your wallets. Let's go easy until ${formatShortDay(sts.nextPayday, today)}.`,
+      message: `What's due before payday is more than what's in your wallets. Let's go easy until ${formatShortDay(sts.nextPayday, today)}.`,
+      link: { href: "/plan", label: "See forecast" },
     };
   }
   if (sts.daysLeft === 1) {

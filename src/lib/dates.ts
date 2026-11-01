@@ -94,6 +94,12 @@ export function periodContaining(date: string): Period {
     : { start: dateInMonth(y, m, 16), end: dateInMonth(y, m, 31) };
 }
 
+/** The whole month: two kinsenas. */
+export function monthContaining(date: string): Period {
+  const [y, m] = date.split("-").map(Number);
+  return { start: dateInMonth(y, m, 1), end: dateInMonth(y, m, 31) };
+}
+
 export function previousPeriod(period: Period): Period {
   return periodContaining(addDays(period.start, -1));
 }
