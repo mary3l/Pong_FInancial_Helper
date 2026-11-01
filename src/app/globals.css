@@ -1,26 +1,30 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* Pong Money design system (see the "UI with Pong" page on the design canvas). */
+@theme {
+  --color-sea: #13795a;
+  --color-sea-dark: #0e5c44;
+  --color-sea-light: #1a8a66;
+  --color-sea-tint: #dff3ea;
+  --color-sea-text: #e6f7ef;
+  --color-sun: #ffc93c;
+  --color-sun-tint: #fff3cc;
+  --color-sun-text: #8a5a00;
+  --color-mint: #f4faf6;
+  --color-coral: #c43d22;
+  --color-coral-tint: #fde6df;
+  --color-coral-text: #a3321b;
+  --color-ink: #12302a;
+  --color-muted: #4d6b63;
+  --color-line: #dcebe3;
+  --color-line-soft: #eaf3ee;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --font-display: var(--font-fredoka), system-ui, sans-serif;
+  --font-sans: var(--font-nunito), system-ui, sans-serif;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--color-mint);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
 }
