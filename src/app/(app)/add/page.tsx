@@ -1,12 +1,14 @@
-import { ComingSoon } from "@/components/coming-soon";
+import { Suspense } from "react";
+import { AddTransaction, AddTransactionSkeleton } from "@/components/add-transaction";
 
+export const metadata = { title: "Add · Pong Money" };
+
+// Opening /add directly (or reloading it) shows Add as a page. Taps on + from
+// inside the app open the same form as a modal instead: see @modal/(.)add.
 export default function AddPage() {
   return (
-    <ComingSoon
-      title="Add expense"
-      message="A calculator keypad, a category, and Save. Recent expenses become one-tap templates."
-      phase="Phase 1"
-      mood="ask"
-    />
+    <Suspense fallback={<AddTransactionSkeleton />}>
+      <AddTransaction mode="page" />
+    </Suspense>
   );
 }

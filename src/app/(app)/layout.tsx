@@ -1,8 +1,9 @@
 import { BottomNav, Sidebar } from "@/components/app-nav";
 
 // Signed-in area. The proxy redirects signed-out visitors to /login; data is
-// protected separately by row-level security in Supabase.
-export default function AppLayout({ children }: LayoutProps<"/">) {
+// protected separately by row-level security in Supabase. `modal` shows Add
+// over the current page (see @modal).
+export default function AppLayout({ children, modal }: LayoutProps<"/">) {
   return (
     <div className="mx-auto flex w-full max-w-[1440px] gap-6 lg:p-6">
       <Sidebar />
@@ -10,6 +11,7 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
         {children}
       </main>
       <BottomNav />
+      {modal}
     </div>
   );
 }

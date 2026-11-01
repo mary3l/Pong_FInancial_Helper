@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Suspense } from "react";
 import { Pong } from "@/components/pong";
 import {
   ActivityIcon,
@@ -19,15 +20,32 @@ const TABS = [
   { href: "/money", label: "Money", Icon: MoneyIcon },
 ];
 
-function useIsActive() {
+type IsActive = (href: string) => boolean;
+
+function useIsActive(): IsActive {
   const pathname = usePathname();
   return (href: string) =>
     href === "/" ? pathname === "/" : pathname.startsWith(href);
 }
 
+// The pathname isn't known while prerendering pages with a dynamic param
+// (like /activity/[id]), so the navs render without a highlight until it is.
+const noneActive: IsActive = () => false;
+
 /** Phone and tablet: Home · Activity · + · Plan · Money, fixed to the bottom. */
 export function BottomNav() {
-  const isActive = useIsActive();
+  return (
+    <Suspense fallback={<BottomNavBar isActive={noneActive} />}>
+      <ActiveBottomNav />
+    </Suspense>
+  );
+}
+
+function ActiveBottomNav() {
+  return <BottomNavBar isActive={useIsActive()} />;
+}
+
+function BottomNavBar({ isActive }: { isActive: IsActive }) {
   const [home, activity, plan, money] = TABS;
 
   return (
@@ -74,7 +92,18 @@ function BottomTab({
 
 /** Desktop: sidebar with the Add button on top. */
 export function Sidebar() {
-  const isActive = useIsActive();
+  return (
+    <Suspense fallback={<SidebarPanel isActive={noneActive} />}>
+      <ActiveSidebar />
+    </Suspense>
+  );
+}
+
+function ActiveSidebar() {
+  return <SidebarPanel isActive={useIsActive()} />;
+}
+
+function SidebarPanel({ isActive }: { isActive: IsActive }) {
 
   return (
     <aside className="sticky top-6 hidden w-64 shrink-0 flex-col gap-5 self-start rounded-[28px] bg-white px-4 py-5 lg:flex">

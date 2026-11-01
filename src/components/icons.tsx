@@ -75,6 +75,31 @@ export function PlusIcon(props: IconProps) {
   );
 }
 
+export function CloseIcon(props: IconProps) {
+  return (
+    <Icon strokeWidth={2.6} {...props}>
+      <path d="M6 6l12 12M18 6 6 18" />
+    </Icon>
+  );
+}
+
+export function ChevronIcon({ direction = "right", ...props }: IconProps & { direction?: "left" | "right" }) {
+  return (
+    <Icon strokeWidth={2.4} {...props}>
+      <path d={direction === "right" ? "m9 6 6 6-6 6" : "m15 6-6 6 6 6"} />
+    </Icon>
+  );
+}
+
+/** A category or wallet icon drawn from one stroke path (see lib/categories.ts). */
+export function PathIcon({ d, ...props }: IconProps & { d: string }) {
+  return (
+    <Icon {...props}>
+      <path d={d} />
+    </Icon>
+  );
+}
+
 export function GoogleIcon({ size = 20 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">

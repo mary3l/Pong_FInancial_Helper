@@ -1,0 +1,115 @@
+"use server";
+
+import { refresh } from "next/cache";
+import { SIGNED_OUT_ERROR, signedInClient } from "@/lib/auth";
+import { MAX_AMOUNT, roundCents } from "@/lib/money";
+import { isValidSchedule, type Schedule } from "@/lib/schedule";
+
+export type BillInput = {
+  /** Set for a bill that's already saved. */
+  id?: string;
+  name: string;
+  amount: number;
+  /** Day of the month it's due. */
+  day: number;
+  accountId: string | null;
+};
+
+export type PaydayInput = {
+  /** Null when pay is irregular. */
+  schedule: Schedule | null;
+  /** Net pay per payday, if the user shares it. */
+  amount: number | null;
+  accountId: string | null;
+  bills: BillInput[];
+};
+
+export type SetupResult = { error?: string };
+
+type Client = NonNullable<Awaited<ReturnType<typeof signedInClient>>>;
+
+function validate(input: PaydayInput): string | null {
+  if (input.schedule && !isValidSchedule(input.schedule)) return "Check your payday dates.";
+  if (input.amount !== null && !(input.amount > 0 && input.amount <= MAX_AMOUNT)) {
+    return "Check your net pay, or leave it blank.";
+  }
+  for (const bill of input.bills) {
+    const name = bill.name.trim();
+    if (!name) return "Give each bill a name.";
+    if (name.length > 60) return "Keep bill names to 60 characters.";
+    if (!(bill.amount > 0 && bill.amount <= MAX_AMOUNT)) return `Add an amount for ${name}. A guess is fine.`;
+    if (!Number.isInteger(bill.day) || bill.day < 1 || bill.day > 31) return `Pick the day ${name} is due.`;
+  }
+  return null;
+}
+
+/** Saves the payday schedule and the list of monthly bills, then ends setup. */
+export async function savePaydayAndBills(input: PaydayInput): Promise<SetupResult> {
+  const problem = validate(input);
+  if (problem) return { error: problem };
+
+  const supabase = await signedInClient();
+  if (!supabase) return { error: SIGNED_OUT_ERROR };
+  const failed = { error: "Couldn't save that. Please try again." };
+
+  const clearPayday = await supabase.from("recurring_items").delete().eq("kind", "payday");
+  if (clearPayday.error) return failed;
+  if (input.schedule) {
+    const { error } = await supabase.from("recurring_items").insert({
+      kind: "payday",
+      name: "Payday",
+      amount: input.amount === null ? null : roundCents(input.amount),
+      account_id: input.accountId,
+      frequency: input.schedule.frequency,
+      day1: input.schedule.day1,
+      day2: input.schedule.day2,
+    });
+    if (error) return failed;
+  }
+
+  const existing = await supabase.from("recurring_items").select("id").eq("kind", "bill");
+  if (existing.error) return failed;
+  const keep = new Set(input.bills.flatMap((b) => (b.id ? [b.id] : [])));
+  const removed = existing.data.map((b) => b.id).filter((id) => !keep.has(id));
+  if (removed.length) {
+    const { error } = await supabase.from("recurring_items").delete().in("id", removed);
+    if (error) return failed;
+  }
+
+  for (const bill of input.bills) {
+    const row = {
+      kind: "bill",
+      name: bill.name.replace(/\s+/g, " ").trim(),
+      amount: roundCents(bill.amount),
+      account_id: bill.accountId,
+      frequency: "monthly",
+      day1: bill.day,
+      day2: null,
+    };
+    const { error } = bill.id
+      ? await supabase.from("recurring_items").update(row).eq("id", bill.id)
+      : await supabase.from("recurring_items").insert(row);
+    if (error) return failed;
+  }
+
+  return markSetupDone(supabase);
+}
+
+/** Skips the rest of setup. Everything can be added later. */
+export async function finishSetup(): Promise<SetupResult> {
+  const supabase = await signedInClient();
+  if (!supabase) return { error: SIGNED_OUT_ERROR };
+  return markSetupDone(supabase);
+}
+
+async function markSetupDone(supabase: Client): Promise<SetupResult> {
+  const { data } = await supabase.auth.getClaims();
+  if (!data?.claims.user_metadata?.setup_done) {
+    const { error } = await supabase.auth.updateUser({ data: { setup_done: true } });
+    if (error) return { error: "Couldn't finish setup. Please try again." };
+    // The proxy reads this flag from the session token, so refresh it now.
+    await supabase.auth.refreshSession();
+  }
+  refresh();
+  return {};
+}

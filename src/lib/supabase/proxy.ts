@@ -48,6 +48,11 @@ export async function updateSession(request: NextRequest) {
   if (signedIn && pathname === "/login") {
     return redirectKeepingCookies(request, response, "/");
   }
+  // First run: Home sends new users through wallet and payday setup once.
+  // Finishing or skipping it sets `setup_done` (see app/setup-actions.ts).
+  if (signedIn && pathname === "/" && !data?.claims.user_metadata?.setup_done) {
+    return redirectKeepingCookies(request, response, "/setup");
+  }
 
   return response;
 }

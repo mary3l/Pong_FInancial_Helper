@@ -31,3 +31,12 @@ export async function getCurrentUser(): Promise<User> {
 
   return { id: claims.sub, email: claims.email ?? "", name };
 }
+
+/** For Server Actions: a Supabase client for the signed-in user, or null. */
+export async function signedInClient() {
+  const supabase = await createClient();
+  const { data } = await supabase.auth.getClaims();
+  return data?.claims ? supabase : null;
+}
+
+export const SIGNED_OUT_ERROR = "You've been signed out. Sign in again to continue.";
