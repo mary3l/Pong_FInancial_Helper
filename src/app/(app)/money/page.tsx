@@ -2,7 +2,7 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { ChevronIcon } from "@/components/icons";
-import { getAccounts, getInstallmentPlans, getRecurringItems, type Account, type InstallmentPlan } from "@/lib/data";
+import { getAccounts, getInstallmentPlans, getPeople, getRecurringItems, type Account, type InstallmentPlan } from "@/lib/data";
 import { formatShortDay, today as getToday } from "@/lib/dates";
 import { formatPeso, isDebt, isSpendable, roundCents } from "@/lib/money";
 import { MoneyTabs } from "./money-tabs";
@@ -29,16 +29,21 @@ async function Wallets() {
   // Read the clock only at request time (Cache Components).
   await connection();
   const today = getToday();
-  const [accounts, plans, recurring] = await Promise.all([
+  const [accounts, plans, recurring, people] = await Promise.all([
     getAccounts({ includeArchived: true }),
     getInstallmentPlans(),
     getRecurringItems(),
+    getPeople(),
   ]);
   const active = accounts.filter((a) => !a.archived);
   const wallets = active.filter((a) => isSpendable(a.type));
   const debts = active.filter((a) => isDebt(a.type));
   const have = roundCents(wallets.reduce((sum, a) => sum + a.balance, 0));
-  const owe = roundCents(debts.reduce((sum, a) => sum + Math.max(0, -a.balance), 0));
+  // Pautang is still your money; utang is money you owe.
+  const owedToYou = roundCents(people.reduce((sum, p) => sum + Math.max(0, p.balance), 0));
+  const owe = roundCents(
+    debts.reduce((sum, a) => sum + Math.max(0, -a.balance), 0) + people.reduce((sum, p) => sum + Math.max(0, -p.balance), 0),
+  );
 
   // What installments cost per month: the next unpaid payment of each plan.
   const perMonth = roundCents(
@@ -55,7 +60,7 @@ async function Wallets() {
         {[
           { label: "You have", value: have },
           { label: "You owe", value: owe },
-          { label: "Net worth", value: roundCents(have - owe) },
+          { label: "Net worth", value: roundCents(have + owedToYou - owe) },
         ].map((s) => (
           <div key={s.label} className="flex flex-col gap-0.5 rounded-2xl bg-white px-3 py-3">
             <dt className="text-xs font-bold text-muted">{s.label}</dt>

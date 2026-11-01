@@ -1,8 +1,9 @@
 import "server-only";
 import { connection } from "next/server";
 import { addDays } from "@/lib/dates";
-import { scheduledItems, type ForecastItem, type ScheduleInputs } from "@/lib/forecast";
+import { scheduledItems, sortItems, type ForecastItem, type ScheduleInputs } from "@/lib/forecast";
 import { isSpendable, roundCents, type AccountType, type TransactionType } from "@/lib/money";
+import { personItems, type EntryKind, type Person } from "@/lib/people";
 import type { Frequency } from "@/lib/schedule";
 import { createClient } from "@/lib/supabase/server";
 
@@ -112,13 +113,18 @@ async function db() {
   return createClient();
 }
 
-export async function getAccounts({ includeArchived = false } = {}): Promise<Account[]> {
+/**
+ * Wallets, credit lines and loans. People (utang and pautang) are accounts
+ * too, but only come back with `includePeople`: see getPeople.
+ */
+export async function getAccounts({ includeArchived = false, includePeople = false } = {}): Promise<Account[]> {
   const supabase = await db();
   let query = supabase
     .from("accounts")
     .select("id, name, type, starting_balance, credit_limit, due_day, archived")
     .order("created_at");
   if (!includeArchived) query = query.eq("archived", false);
+  if (!includePeople) query = query.neq("type", "person");
 
   const [accounts, balances] = await Promise.all([
     query,
@@ -269,32 +275,80 @@ export function installmentInputs(plans: InstallmentPlan[]): NonNullable<Schedul
   );
 }
 
+/** Everyone with utang or pautang, with their entries. */
+export async function getPeople({ includeArchived = false } = {}): Promise<Person[]> {
+  const supabase = await db();
+  let accounts = supabase
+    .from("accounts")
+    .select("id, name, contact, starting_balance, archived")
+    .eq("type", "person")
+    .order("name");
+  if (!includeArchived) accounts = accounts.eq("archived", false);
+  const [a, b, e] = await Promise.all([
+    accounts,
+    supabase.from("account_balances").select("account_id, balance"),
+    supabase
+      .from("person_entries")
+      .select("transaction_id, person_id, kind, due_on, count_in_forecast, split_total")
+      .order("created_at"),
+  ]);
+  if (a.error) throw dbError(a.error);
+  if (b.error) throw dbError(b.error);
+  if (e.error) throw dbError(e.error);
+
+  const balanceById = new Map(b.data.map((row) => [row.account_id as string, Number(row.balance)]));
+  return a.data.map((p) => ({
+    id: p.id,
+    name: p.name,
+    contact: p.contact,
+    balance: balanceById.get(p.id) ?? Number(p.starting_balance),
+    entries: e.data
+      .filter((row) => row.person_id === p.id)
+      .map((row) => ({
+        transactionId: row.transaction_id,
+        personId: row.person_id,
+        kind: row.kind as EntryKind,
+        dueOn: row.due_on,
+        countInForecast: row.count_in_forecast,
+        splitTotal: row.split_total === null ? null : Number(row.split_total),
+      })),
+  }));
+}
+
 export type PlanInputs = {
   accounts: Account[];
   /** Money in cash, bank and e-wallets right now. */
   inWallets: number;
   payday: RecurringItem | null;
-  /** Paydays, recurring and planned items from today for `days` days. */
+  /** Everyone with utang or pautang. */
+  people: Person[];
+  /** Paydays, recurring and planned items, installments and utang from today for `days` days. */
   items: ForecastItem[];
 };
 
 /** Everything the forecast, Safe to spend and Due soon work from. */
 export async function getPlanInputs(today: string, days: number): Promise<PlanInputs> {
-  const [accounts, recurring, billPayments, planned, plans] = await Promise.all([
+  const [accounts, recurring, billPayments, planned, plans, people] = await Promise.all([
     getAccounts(),
     getRecurringItems(),
     getBillPayments(today),
     getPlannedExpenses(today),
     getInstallmentPlans(),
+    getPeople(),
   ]);
   const installments = installmentInputs(plans);
+  const until = addDays(today, days);
   return {
     accounts,
     inWallets: roundCents(
       accounts.filter((a) => isSpendable(a.type)).reduce((sum, a) => sum + a.balance, 0),
     ),
     payday: recurring.find((r) => r.kind === "payday") ?? null,
-    items: scheduledItems({ recurring, billPayments, planned, installments }, today, addDays(today, days)),
+    people,
+    items: sortItems([
+      ...scheduledItems({ recurring, billPayments, planned, installments }, today, until),
+      ...personItems(people, today, until),
+    ]),
   };
 }
 
@@ -337,17 +391,19 @@ function toTransaction(r: TxnRow): Transaction {
   };
 }
 
-/** Newest first. `from` and `to` are inclusive dates. */
+/** Newest first. `from` and `to` are inclusive dates; `accountId` limits it to one account. */
 export async function getTransactions({
   from,
   to,
   search,
   limit,
+  accountId,
 }: {
   from?: string;
   to?: string;
   search?: string;
   limit?: number;
+  accountId?: string;
 } = {}): Promise<Transaction[]> {
   const supabase = await db();
   let query = supabase
@@ -357,6 +413,7 @@ export async function getTransactions({
     .order("created_at", { ascending: false });
   if (from) query = query.gte("occurred_on", from);
   if (to) query = query.lte("occurred_on", to);
+  if (accountId) query = query.or(`account_id.eq.${accountId},to_account_id.eq.${accountId}`);
   if (search) {
     // Strip characters that have meaning in a PostgREST filter.
     const term = search.replace(/[%_,.()*\\:"]/g, " ").trim();

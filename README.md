@@ -29,7 +29,7 @@ Screens and the phased dev plan live on the design canvas.
   until the user finishes or skips it, which sets `setup_done` in their user metadata.
 - `src/lib/data.ts` has the reads; `src/app/*-actions.ts` have the writes.
 - `src/app/(app)/money/` is Money: wallets, BNPL credit lines and loans (with their
-  payment plans in `[id]`).
+  payment plans in `[id]`), and `people/` for utang & pautang.
 - `src/app/(app)/plan/` is Plan: Forecast, Scheduled (recurring and planned income and
   expenses), Can I afford this? and Budgets per kinsenas.
 - `src/lib/money.ts`, `schedule.ts`, `forecast.ts`, `dates.ts` and `calculator.ts` are pure helpers:
@@ -47,6 +47,14 @@ line, so its balance goes below 0 (what you owe). Each installment is a transfer
 wallet to the credit line, plus an expense for the fee. Loans (SLoan, MariLoan): the money
 received is a transfer from the loan account, never income; each amortization is a transfer
 for the principal plus an expense for the interest. `src/lib/installments.ts` has the math.
+
+Utang & pautang: each person is an account of type `person` whose balance is what they owe
+you (or, below 0, what you owe them). Lending is a transfer to them, borrowing a transfer
+from them, and being paid back a transfer again, so none of it is spending or income. In a
+split you paid, only your share is an expense and the rest is pautang; if they paid, your
+share is an expense from their account (utang). Forgiving turns what's left into Gifts.
+Safe to spend and the forecast never count pautang unless you switch on "Count it in my
+forecast", and never once it's late.
 
 Safe to spend = money in cash, bank and e-wallets, minus unpaid bills and expenses due
 before the next payday, divided by the days until payday. Income you haven't received yet

@@ -1,7 +1,8 @@
 // Money rules shared by the server and the browser. See the design canvas,
 // rows 4 and 5, and the comments in supabase/migrations.
 
-export type AccountType = "cash" | "bank" | "ewallet" | "credit_line" | "loan";
+/** "person" holds utang and pautang with one person (Phase 4). */
+export type AccountType = "cash" | "bank" | "ewallet" | "credit_line" | "loan" | "person";
 export type TransactionType = "expense" | "income" | "transfer";
 
 /** Accounts that hold your own money. Credit lines and loans have their own forms. */
@@ -20,7 +21,7 @@ export function isWalletType(value: unknown): value is WalletType {
 export function accountTypeLabel(type: AccountType): string {
   return (
     WALLET_TYPES.find((t) => t.value === type)?.label ??
-    (type === "credit_line" ? "BNPL" : "Loan")
+    (type === "credit_line" ? "BNPL" : type === "loan" ? "Loan" : "Person")
   );
 }
 

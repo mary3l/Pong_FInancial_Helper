@@ -34,7 +34,7 @@ export default function SettingsPage() {
       </Group>
 
       <Group title="DEBTS & COMMITMENTS">
-        <Row title="Utang / Pautang & split bills" detail="Who owes whom" soon />
+        <Row title="Utang / Pautang & split bills" detail="Who owes whom" href="/money/people" />
         <Row title="Installments & loans" detail="SPayLater, Atome, SLoan, MariLoan" href="/money" />
         <Row title="Paluwagan" soon />
       </Group>

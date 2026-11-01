@@ -20,14 +20,13 @@ async function EditTransaction({ params }: Pick<PageProps<"/activity/[id]">, "pa
   const { id } = await params;
   const [transaction, accounts] = await Promise.all([
     getTransaction(id),
-    getAccounts({ includeArchived: true }),
+    getAccounts({ includeArchived: true, includePeople: true }),
   ]);
   if (!transaction) notFound();
 
-  // Archived wallets stay hidden unless this transaction used one.
-  const usable = accounts.filter(
-    (a) => !a.archived || a.id === transaction.accountId || a.id === transaction.toAccountId,
-  );
+  // Archived wallets and people stay hidden unless this transaction used one.
+  const used = (a: { id: string }) => a.id === transaction.accountId || a.id === transaction.toAccountId;
+  const usable = accounts.filter((a) => used(a) || (!a.archived && a.type !== "person"));
 
   return (
     <TransactionForm

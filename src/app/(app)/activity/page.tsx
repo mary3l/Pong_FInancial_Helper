@@ -38,7 +38,7 @@ async function Activity({ searchParams }: Pick<PageProps<"/activity">, "searchPa
   const isCurrent = period.start === periodContaining(today).start;
 
   const [accounts, transactions] = await Promise.all([
-    getAccounts({ includeArchived: true }),
+    getAccounts({ includeArchived: true, includePeople: true }),
     getTransactions({ from: period.start, to: period.end, search: q }),
   ]);
   const totals = cashflow(transactions);

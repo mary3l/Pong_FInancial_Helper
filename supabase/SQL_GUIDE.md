@@ -124,3 +124,30 @@ where table_schema = 'public' and table_name in ('installment_plans', 'scheduled
 ```
 
 Expect `2`.
+
+## Step 6 · Phase 4: utang, pautang and split bills
+
+File: `migrations/0006_people.sql`
+
+Powers **Money › Utang & pautang**, Lend / borrow, the person screen (Record payment,
+Send reminder, Forgive), the **Split this bill** toggle in Add, and the overdue nudge
+on Home.
+
+- `accounts` can now be of type `person`: each person's balance is what they owe you
+  (above 0) or what you owe them (below 0). Adds an optional `contact` column.
+- `person_entries`: due date, kind (lend, borrow, split, payment, forgive) and the
+  "count it in my forecast" switch for each utang / pautang transaction.
+
+Supabase will warn about a destructive operation (it swaps the rule for which account
+types are allowed). Click **Run this query**. Nothing is deleted.
+
+**Check**
+
+```sql
+select
+  to_regclass('public.person_entries') is not null as entries_table,
+  exists (select 1 from information_schema.columns
+          where table_name = 'accounts' and column_name = 'contact') as contact_column;
+```
+
+Expect `true` and `true`.

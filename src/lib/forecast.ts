@@ -9,7 +9,7 @@ import { nextOccurrence, occurrences, type Schedule } from "@/lib/schedule";
 // they're logged ("Mark paid" or "Add income"): then the wallet balance
 // already reflects them and the item drops out.
 
-export type ForecastKind = "payday" | "income" | "bill" | "planned" | "installment";
+export type ForecastKind = "payday" | "income" | "bill" | "planned" | "installment" | "utang" | "pautang";
 
 /** Something scheduled to move money on a date. */
 export type ForecastItem = {
@@ -18,7 +18,7 @@ export type ForecastItem = {
   kind: ForecastKind;
   /** Money coming in (pay, income) or going out (bills, expenses). */
   flow: "in" | "out";
-  /** The recurring_items, planned_expenses or scheduled_payments row. */
+  /** The recurring_items, planned_expenses or scheduled_payments row, or the person. */
   id: string;
   name: string;
   /** Always positive. Null for a payday with no net pay saved. */
@@ -173,6 +173,10 @@ export function itemLabel(item: Pick<ForecastItem, "kind" | "flow">): string {
       return item.flow === "in" ? "Planned income" : "Planned";
     case "installment":
       return "Installment";
+    case "utang":
+      return "Utang";
+    case "pautang":
+      return "Pautang";
   }
 }
 

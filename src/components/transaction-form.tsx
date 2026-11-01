@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useEffectEvent, useState, useTransition } from "react";
+import { saveSplit } from "@/app/people-actions";
 import {
   deleteTransaction,
   saveBnplPurchase,
@@ -23,7 +24,8 @@ import { categoriesFor, categoryInfo } from "@/lib/categories";
 import type { Account, Template, Transaction } from "@/lib/data";
 import { formatRelativeDay, formatShortDay, isValidDate } from "@/lib/dates";
 import { bnplFee, bnplFirstDue, buildSchedule } from "@/lib/installments";
-import { balanceEffect, formatPeso, isSpendable, type TransactionType } from "@/lib/money";
+import { balanceEffect, formatPeso, isSpendable, parseAmount, roundCents, type TransactionType } from "@/lib/money";
+import { equalShares } from "@/lib/people";
 
 // Design canvas 2.2 (phone) and "Web · Add expense modal" (desktop).
 // One form for adding and editing expenses, income and transfers.
@@ -33,6 +35,9 @@ const TYPES: { value: TransactionType; label: string }[] = [
   { value: "income", label: "Income" },
   { value: "transfer", label: "Transfer" },
 ];
+
+/** Someone in a split: a saved person, or a new name. */
+type Participant = { key: string; personId: string | null; name: string };
 
 /** BNPL plan lengths offered in Add; 1 is "pay next month". */
 const PLAN_MONTHS = [1, 3, 6, 12];
@@ -104,6 +109,8 @@ export function TransactionForm({
   mode,
   closeHref = "/",
   prefill,
+  people = [],
+  startSplit = false,
 }: {
   accounts: Account[];
   templates: Template[];
@@ -114,6 +121,10 @@ export function TransactionForm({
   mode: "modal" | "page";
   closeHref?: string;
   prefill?: Prefill;
+  /** People you have utang or pautang with, for Split. */
+  people?: { id: string; name: string }[];
+  /** Open with Split on (from "Split a bill"). */
+  startSplit?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -146,6 +157,13 @@ export function TransactionForm({
   const [planRate, setPlanRate] = useState("0");
   const [planFirstDue, setPlanFirstDue] = useState<string | null>(null);
   const [planPayFrom, setPlanPayFrom] = useState(accounts.find((a) => isSpendable(a.type))?.id ?? "");
+  // Split a bill (design canvas row 5).
+  const [splitOn, setSplitOn] = useState(startSplit && !transaction);
+  const [participants, setParticipants] = useState<Participant[]>([]);
+  const [newName, setNewName] = useState("");
+  const [paidBy, setPaidBy] = useState<string | null>(null);
+  const [splitMethod, setSplitMethod] = useState<"equal" | "exact">("equal");
+  const [exact, setExact] = useState<Record<string, string>>({});
 
   const category = type === "transfer" ? null : categories[type];
   const value = evaluate(calc.expr);
@@ -153,8 +171,10 @@ export function TransactionForm({
   const account = accounts.find((a) => a.id === accountId);
   const toAccount = accounts.find((a) => a.id === toAccountId);
   const keep = [transaction?.accountId, transaction?.toAccountId];
-  const fromList = usableFor(type, accounts, keep);
-  const withPlan = !editing && type === "expense" && account?.type === "credit_line";
+  const splitting = splitOn && type === "expense" && !editing;
+  const fromList = usableFor(type, accounts, keep).filter((a) => !splitting || isSpendable(a.type));
+  const withPlan = !editing && !splitting && type === "expense" && account?.type === "credit_line";
+  const shares = splitting ? splitShares(amount, participants, splitMethod, exact) : null;
   const rate = Number(planRate);
   const firstDue = planFirstDue ?? (isValidDate(date) ? bnplFirstDue(date, account?.dueDay ?? null) : "");
   const planRows =
@@ -216,6 +236,33 @@ export function TransactionForm({
     }
     if (!amount) {
       setSaveError("Enter an amount above ₱0.");
+      return;
+    }
+    if (splitting) {
+      if (!participants.length) {
+        setSaveError("Pick who you split it with.");
+        return;
+      }
+      if (!shares?.ok) {
+        setSaveError(shares?.problem ?? "Check the shares.");
+        return;
+      }
+      const whoOf = (p: Participant) => (p.personId ? { personId: p.personId } : { name: p.name });
+      const payer = participants.find((p) => p.key === paidBy);
+      startTransition(async () => {
+        const result = await saveSplit({
+          total: amount,
+          category: category ?? "other",
+          note,
+          occurredOn: date,
+          paidBy: payer ? whoOf(payer) : null,
+          walletId: payer ? null : accountId,
+          myShare: shares.mine,
+          others: participants.map((p) => ({ who: whoOf(p), amount: shares.byKey[p.key] ?? 0 })),
+        });
+        if (result.error) setSaveError(result.error);
+        else close();
+      });
       return;
     }
     if (withPlan && !(rate >= 0 && rate <= 10)) {
@@ -301,7 +348,32 @@ export function TransactionForm({
     );
   }
 
-  const pong = pongSays({ type, amount, error: calc.error, account, toAccount, transaction, planRows });
+  const pong = splitting
+    ? splitPong(amount, shares, participants, paidBy)
+    : pongSays({ type, amount, error: calc.error, account, toAccount, transaction, planRows });
+  const payer = splitting ? participants.find((p) => p.key === paidBy) : undefined;
+
+  function toggleSplit(on: boolean) {
+    setSplitOn(on);
+    setSaveError(null);
+    if (on && account && !isSpendable(account.type)) {
+      setAccountId(accounts.find((a) => isSpendable(a.type))?.id ?? accountId);
+    }
+  }
+
+  function toggleParticipant(p: Participant) {
+    setParticipants((list) => (list.some((x) => x.key === p.key) ? list.filter((x) => x.key !== p.key) : [...list, p]));
+    if (paidBy === p.key) setPaidBy(null);
+  }
+
+  function addNewName() {
+    const name = newName.replace(/\s+/g, " ").trim();
+    if (!name) return;
+    const existing = people.find((p) => p.name.toLowerCase() === name.toLowerCase());
+    const p = existing ? { key: `p:${existing.id}`, personId: existing.id, name: existing.name } : { key: `n:${name.toLowerCase()}`, personId: null, name };
+    if (!participants.some((x) => x.key === p.key)) setParticipants((list) => [...list, p]);
+    setNewName("");
+  }
   const title = editing ? "Edit transaction" : TITLES[type];
   const saveLabel = pending ? "Saving…" : amount ? `Save ${formatPeso(amount)}` : "Enter an amount";
   const transferWallets = usableFor("transfer", accounts, keep).filter((a) => a.id !== accountId);
@@ -455,12 +527,124 @@ export function TransactionForm({
           </div>
         )}
 
-        <div className="order-6 flex flex-col gap-1.5 lg:order-none">
-          <span className="text-sm font-extrabold">
-            {type === "expense" ? "Pay with" : type === "income" ? "Received in" : "From"}
-          </span>
-          {walletChips(accountId, pickFrom, fromList, type === "expense" ? "Pay with" : type === "income" ? "Received in" : "From")}
-        </div>
+        {type === "expense" && !editing && (
+          <div className="order-6 flex flex-col gap-2.5 rounded-[18px] bg-white p-3.5 lg:order-none">
+            <label className="flex items-center justify-between gap-3 text-sm font-extrabold">
+              Split this bill
+              <input type="checkbox" checked={splitOn} onChange={(e) => toggleSplit(e.target.checked)} className="h-6 w-6 accent-sea" />
+            </label>
+            {splitting && (
+              <>
+                <span id="split-with-label" className="text-[13px] font-extrabold text-muted">SPLIT WITH</span>
+                <div role="group" aria-labelledby="split-with-label" className="flex flex-wrap gap-2">
+                  {[
+                    ...people.map((p) => ({ key: `p:${p.id}`, personId: p.id, name: p.name })),
+                    ...participants.filter((p) => !p.personId),
+                  ].map((p) => {
+                    const on = participants.some((x) => x.key === p.key);
+                    return (
+                      <button
+                        key={p.key}
+                        type="button"
+                        aria-pressed={on}
+                        onClick={() => toggleParticipant(p)}
+                        className={`h-9 rounded-full px-3.5 text-sm font-extrabold ${on ? "bg-ink text-white" : "bg-mint text-ink hover:bg-sea-tint"}`}
+                      >
+                        {p.name}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="flex gap-2">
+                  <label htmlFor="split-new" className="sr-only">Add someone</label>
+                  <input
+                    id="split-new"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addNewName();
+                      }
+                    }}
+                    maxLength={60}
+                    placeholder="Add someone"
+                    className="h-10 min-w-0 flex-1 rounded-[14px] bg-mint px-3 text-[15px] outline-none focus:ring-2 focus:ring-sea"
+                  />
+                  <button type="button" onClick={addNewName} className="h-10 rounded-[14px] bg-mint px-3.5 text-sm font-extrabold">
+                    Add
+                  </button>
+                </div>
+                {participants.length > 0 && (
+                  <>
+                    <span id="split-paid-label" className="text-[13px] font-extrabold text-muted">WHO PAID?</span>
+                    <div role="group" aria-labelledby="split-paid-label" className="flex flex-wrap gap-2">
+                      {[{ key: null, name: "Me" }, ...participants].map((p) => (
+                        <button
+                          key={p.key ?? "me"}
+                          type="button"
+                          aria-pressed={paidBy === p.key}
+                          onClick={() => setPaidBy(p.key)}
+                          className={`h-9 rounded-full px-3.5 text-sm font-extrabold ${paidBy === p.key ? "bg-ink text-white" : "bg-mint text-ink hover:bg-sea-tint"}`}
+                        >
+                          {p.name}
+                        </button>
+                      ))}
+                    </div>
+                    <div role="group" aria-label="How to split" className="grid grid-cols-2 gap-1 rounded-xl bg-mint p-1">
+                      {(["equal", "exact"] as const).map((m) => (
+                        <button
+                          key={m}
+                          type="button"
+                          aria-pressed={splitMethod === m}
+                          onClick={() => setSplitMethod(m)}
+                          className={`h-8 rounded-lg text-sm ${splitMethod === m ? "bg-white font-extrabold" : "font-bold text-muted"}`}
+                        >
+                          {m === "equal" ? "Split equally" : "Exact amounts"}
+                        </button>
+                      ))}
+                    </div>
+                    <ul className="flex flex-col gap-1.5">
+                      {[{ key: "me", name: "You" }, ...participants].map((p) => (
+                        <li key={p.key} className="flex items-center justify-between gap-3 text-[15px]">
+                          <span className="font-bold">{p.name}</span>
+                          {splitMethod === "exact" ? (
+                            <input
+                              aria-label={`${p.name}'s share`}
+                              value={exact[p.key] ?? ""}
+                              onChange={(e) => setExact((x) => ({ ...x, [p.key]: e.target.value }))}
+                              inputMode="decimal"
+                              placeholder="0.00"
+                              className="h-9 w-28 rounded-[12px] bg-mint px-3 text-right text-[15px] outline-none focus:ring-2 focus:ring-sea"
+                            />
+                          ) : (
+                            <span className="font-display font-semibold">
+                              {formatPeso(p.key === "me" ? (shares?.mine ?? 0) : (shares?.byKey[p.key] ?? 0))}
+                            </span>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="text-xs text-muted">
+                      {payer
+                        ? `${payer.name} paid: your share is spending, and you'll owe it to ${payer.name}.`
+                        : "You paid: only your share is spending. The rest is pautang, still your money."}
+                    </p>
+                  </>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {!payer && (
+          <div className="order-6 flex flex-col gap-1.5 lg:order-none">
+            <span className="text-sm font-extrabold">
+              {type === "expense" ? "Pay with" : type === "income" ? "Received in" : "From"}
+            </span>
+            {walletChips(accountId, pickFrom, fromList, type === "expense" ? "Pay with" : type === "income" ? "Received in" : "From")}
+          </div>
+        )}
 
         {withPlan && (
           <div className="order-7 flex flex-col gap-2.5 rounded-[18px] bg-white p-3.5 lg:order-none">
@@ -600,6 +784,46 @@ export function TransactionForm({
       </div>
     </form>
   );
+}
+
+type Shares = { ok: boolean; problem?: string; mine: number; byKey: Record<string, number> };
+
+/** Each person's share of `total`: equal (you absorb the rounding) or typed in. */
+function splitShares(
+  total: number,
+  participants: Participant[],
+  method: "equal" | "exact",
+  exact: Record<string, string>,
+): Shares {
+  if (method === "equal") {
+    const [mine, ...others] = equalShares(total, participants.map((p) => p.key));
+    return { ok: total > 0, mine: mine.amount, byKey: Object.fromEntries(others.map((s) => [s.personId!, s.amount])) };
+  }
+  const read = (key: string) => (exact[key]?.trim() ? parseAmount(exact[key]) : 0);
+  const mine = read("me");
+  const byKey = Object.fromEntries(participants.map((p) => [p.key, read(p.key)]));
+  const values = [mine, ...Object.values(byKey)];
+  if (values.some((v) => Number.isNaN(v))) return { ok: false, problem: "Check the shares.", mine: 0, byKey };
+  const sum = roundCents(values.reduce((s, v) => s + v, 0));
+  if (sum !== roundCents(total)) {
+    return { ok: false, problem: `The shares add up to ${formatPeso(sum)}, not ${formatPeso(total)}.`, mine, byKey };
+  }
+  return { ok: true, mine, byKey };
+}
+
+function splitPong(
+  amount: number,
+  shares: Shares | null,
+  participants: Participant[],
+  paidBy: string | null,
+): { mood: PongMood; line: string } {
+  if (!amount) return { mood: "ask", line: "How much was the whole bill?" };
+  if (!participants.length) return { mood: "listen", line: "Who did you split it with?" };
+  if (!shares?.ok) return { mood: "worried", line: shares?.problem ?? "Check the shares." };
+  const payer = participants.find((p) => p.key === paidBy);
+  if (payer) return { mood: "listen", line: `Your share is ${formatPeso(shares.mine)}. I'll note that you owe ${payer.name}.` };
+  const owed = roundCents(amount - shares.mine);
+  return { mood: "happy", line: `Your share is ${formatPeso(shares.mine)}. ${formatPeso(owed)} becomes pautang, still your money.` };
 }
 
 function summary({

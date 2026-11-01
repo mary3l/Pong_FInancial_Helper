@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { payInstallments, undoInstallment } from "@/app/credit-actions";
+import { settlePerson } from "@/app/people-actions";
 import { logPlanned, logRecurring } from "@/app/plan-actions";
 import { deleteTransaction } from "@/app/transaction-actions";
 import type { ForecastItem } from "@/lib/forecast";
@@ -24,7 +25,8 @@ export function prefillHref(item: ForecastItem): string {
 
 // "Mark paid" for money going out, "Add income" for money coming in. Either
 // logs the real transaction at the scheduled amount; undo deletes it, which
-// un-marks the item. An installment logs a transfer plus its fee.
+// un-marks the item. An installment logs a transfer plus its fee; utang and
+// pautang settle the whole balance (a transfer, never spending).
 export function LogButton({ item }: { item: ForecastItem }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -35,7 +37,9 @@ export function LogButton({ item }: { item: ForecastItem }) {
   function toggle() {
     setError(null);
     startTransition(async () => {
-      const result = await (item.kind === "installment"
+      const result = await (item.kind === "utang" || item.kind === "pautang"
+        ? settlePerson(item.id)
+        : item.kind === "installment"
         ? paid
           ? undoInstallment(item.id)
           : payInstallments([item.id])

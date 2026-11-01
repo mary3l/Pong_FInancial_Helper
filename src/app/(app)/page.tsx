@@ -17,6 +17,7 @@ import {
 } from "@/lib/dates";
 import { itemLabel, project, safeToSpend, type ForecastItem, type SafeToSpend } from "@/lib/forecast";
 import { accountTypeLabel, formatPeso, isDebt, isSpendable, roundCents } from "@/lib/money";
+import { dueDate, isOverdue } from "@/lib/people";
 
 // Design canvas 2.1: Safe to spend (with its breakdown), Coming up (bills and
 // expenses with Mark paid, pay and income with Add income), the next 30 days,
@@ -71,7 +72,7 @@ async function Dashboard() {
   // Read the clock only at request time (Cache Components).
   await connection();
   const today = getToday();
-  const [{ accounts, inWallets, payday, items }, recent] = await Promise.all([
+  const [{ accounts, inWallets, payday, items, people }, recent] = await Promise.all([
     getPlanInputs(today, 30),
     getTransactions({ limit: 6 }),
   ]);
@@ -83,6 +84,7 @@ async function Dashboard() {
   const dueSoon = items.filter((i) => i.dueOn < weekOut && (i.dueOn >= today || !i.transactionId));
   const hasScheduled = items.some((i) => i.kind !== "planned");
   const wallets = accounts.filter((a) => isSpendable(a.type));
+  const overdue = people.filter((p) => isOverdue(p, today));
   const owed = roundCents(accounts.filter((a) => isDebt(a.type)).reduce((sum, a) => sum + Math.max(0, -a.balance), 0));
 
   return (
@@ -101,6 +103,20 @@ async function Dashboard() {
         </div>
 
         <SafeToSpendCard sts={sts} today={today} />
+
+        {overdue.length > 0 && (
+          <section aria-label="Overdue pautang" className="flex flex-col gap-1 rounded-[20px] bg-coral-tint px-4 py-3">
+            {overdue.map((p) => (
+              <p key={p.id} className="text-[15px]">
+                <strong>{p.name}</strong>&apos;s {formatPeso(p.balance)} was due{" "}
+                {formatShortDay(dueDate(p)!, today)}.{" "}
+                <Link href={`/money/people/${p.id}`} className="font-extrabold text-coral-text underline">
+                  Remind {p.name}
+                </Link>
+              </p>
+            ))}
+          </section>
+        )}
 
         <section aria-labelledby="due-heading" className="flex flex-col gap-2.5">
           <div className="flex items-baseline justify-between">

@@ -1,0 +1,187 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useState, useTransition } from "react";
+import { lendOrBorrow } from "@/app/people-actions";
+import { ChoiceChip, FIELD_CLASS } from "@/components/choice-chip";
+import type { Account } from "@/lib/data";
+import { parseAmount } from "@/lib/money";
+
+export function LendForm({
+  wallets,
+  people,
+  initialPerson,
+  initialDirection,
+  today,
+}: {
+  wallets: Account[];
+  people: { id: string; name: string }[];
+  /** A person id to start with, from their detail screen. */
+  initialPerson: string | null;
+  initialDirection: "lend" | "borrow";
+  today: string;
+}) {
+  const router = useRouter();
+  const [direction, setDirection] = useState(initialDirection);
+  const [personId, setPersonId] = useState<string | null>(
+    people.some((p) => p.id === initialPerson) ? initialPerson : null,
+  );
+  const [name, setName] = useState("");
+  const [amount, setAmount] = useState("");
+  const [walletId, setWalletId] = useState(wallets[0]?.id ?? "");
+  const [date, setDate] = useState(today);
+  const [dueOn, setDueOn] = useState("");
+  const [note, setNote] = useState("");
+  const [count, setCount] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+  const lend = direction === "lend";
+
+  // Typing a name that matches someone picks them.
+  const typed = name.trim().toLowerCase();
+  const matches = typed ? people.filter((p) => p.name.toLowerCase().includes(typed)) : people;
+
+  function save(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const value = parseAmount(amount);
+    if (!(value > 0)) {
+      setError("Enter an amount above ₱0.");
+      return;
+    }
+    const exact = people.find((p) => p.name.toLowerCase() === typed);
+    const who = personId ? { personId } : exact ? { personId: exact.id } : { name };
+    if (!personId && !exact && !typed) {
+      setError("Who is it? Pick someone or type a name.");
+      return;
+    }
+    startTransition(async () => {
+      const result = await lendOrBorrow({
+        direction,
+        who,
+        amount: value,
+        walletId,
+        occurredOn: date,
+        dueOn: dueOn || null,
+        countInForecast: count,
+        note,
+      });
+      if (result.error) setError(result.error);
+      else router.push(`/money/people/${result.personId}`);
+    });
+  }
+
+  if (!wallets.length) {
+    return <p className="rounded-[20px] bg-white p-5 text-muted">Add a wallet in Money first.</p>;
+  }
+
+  return (
+    <form onSubmit={save} className="flex flex-col gap-4">
+      <div role="group" aria-label="Lent or borrowed" className="grid grid-cols-2 gap-1 rounded-2xl bg-white p-1">
+        {(["lend", "borrow"] as const).map((d) => (
+          <button
+            key={d}
+            type="button"
+            aria-pressed={direction === d}
+            onClick={() => setDirection(d)}
+            className={`h-10 rounded-xl text-sm ${direction === d ? "bg-sea font-extrabold text-white" : "font-bold text-muted hover:text-ink"}`}
+          >
+            {d === "lend" ? "I lent (pautang)" : "I borrowed (utang)"}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <label htmlFor="lend-who" className="text-sm font-bold">Who?</label>
+        <input
+          id="lend-who"
+          value={personId ? (people.find((p) => p.id === personId)?.name ?? "") : name}
+          onChange={(e) => {
+            setPersonId(null);
+            setName(e.target.value);
+          }}
+          maxLength={60}
+          placeholder="Search or add a person"
+          className={FIELD_CLASS}
+        />
+        {matches.length > 0 && (
+          <div role="group" aria-label="People" className="flex flex-wrap gap-2">
+            {matches.slice(0, 8).map((p) => (
+              <ChoiceChip
+                key={p.id}
+                selected={personId === p.id}
+                onClick={() => {
+                  setPersonId(p.id);
+                  setName("");
+                }}
+                className={personId === p.id ? "" : "bg-white"}
+              >
+                {p.name}
+              </ChoiceChip>
+            ))}
+          </div>
+        )}
+        {!personId && typed && !people.some((p) => p.name.toLowerCase() === typed) && (
+          <span className="text-xs text-muted">I&apos;ll add {name.trim()} as someone new.</span>
+        )}
+      </div>
+
+      <div className="flex flex-col items-center gap-1">
+        <label htmlFor="lend-amount" className="text-[13px] font-bold text-muted">AMOUNT</label>
+        <input
+          id="lend-amount"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+          inputMode="decimal"
+          placeholder="₱ 0.00"
+          className="w-full border-b-2 border-ink bg-transparent py-1 text-center font-display text-4xl font-semibold outline-none focus:border-sea"
+        />
+      </div>
+
+      <div className="flex flex-col gap-3 rounded-[20px] bg-white p-4">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="flex flex-col gap-1">
+            <label htmlFor="lend-wallet" className="text-sm font-bold">{lend ? "Sent from" : "Received in"}</label>
+            <select id="lend-wallet" value={walletId} onChange={(e) => setWalletId(e.target.value)} className={FIELD_CLASS}>
+              {wallets.map((w) => (
+                <option key={w.id} value={w.id}>{w.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="lend-date" className="text-sm font-bold">Date</label>
+            <input id="lend-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} className={FIELD_CLASS} />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="lend-due" className="text-sm font-bold">
+              {lend ? "Promised to pay on" : "I'll pay back on"} <span className="font-semibold text-muted">(optional)</span>
+            </label>
+            <input id="lend-due" type="date" value={dueOn} min={date} onChange={(e) => setDueOn(e.target.value)} className={FIELD_CLASS} />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label htmlFor="lend-note" className="text-sm font-bold">Note</label>
+            <input id="lend-note" value={note} onChange={(e) => setNote(e.target.value)} maxLength={120} placeholder="e.g. tuition" className={FIELD_CLASS} />
+          </div>
+        </div>
+        {lend ? (
+          <label className="flex items-center justify-between gap-3 text-sm font-bold">
+            Count it in my forecast on the due date
+            <input type="checkbox" checked={count} disabled={!dueOn} onChange={(e) => setCount(e.target.checked)} className="h-6 w-6 shrink-0 accent-sea" />
+          </label>
+        ) : (
+          <p className="text-xs text-muted">With a pay-back date, it shows in Coming up and your forecast like a bill.</p>
+        )}
+      </div>
+      <p className="text-[13px] leading-relaxed text-muted">
+        {lend
+          ? "Off by default: I won't count on money until it's actually paid back. Lending isn't spending either; it's still your money."
+          : "Borrowed money isn't income. It's a transfer from them, so your budget stays honest."}
+      </p>
+
+      <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
+      <button type="submit" disabled={pending} className="h-14 rounded-[20px] bg-sun text-lg font-extrabold text-ink disabled:opacity-60">
+        {pending ? "Saving…" : "Save"}
+      </button>
+    </form>
+  );
+}

@@ -1,6 +1,6 @@
 import { TransactionForm, type Prefill } from "@/components/transaction-form";
 import { isCategoryFor } from "@/lib/categories";
-import { getAccounts, getTransactions, templatesFrom } from "@/lib/data";
+import { getAccounts, getPeople, getTransactions, templatesFrom } from "@/lib/data";
 import { today } from "@/lib/dates";
 import { parseAmount } from "@/lib/money";
 
@@ -39,10 +39,11 @@ export async function AddTransaction({
   mode: "modal" | "page";
   searchParams?: Promise<Params>;
 }) {
-  const [accounts, recent, params] = await Promise.all([
+  const [accounts, recent, people, params] = await Promise.all([
     getAccounts(),
     getTransactions({ limit: 60 }),
-    searchParams ?? Promise.resolve({}),
+    getPeople(),
+    searchParams ?? Promise.resolve<Params>({}),
   ]);
   const templates = templatesFrom(recent, new Set(accounts.map((a) => a.id)));
 
@@ -53,6 +54,8 @@ export async function AddTransaction({
       today={today()}
       mode={mode}
       prefill={prefillFrom(params)}
+      people={people.map((p) => ({ id: p.id, name: p.name }))}
+      startSplit={params.split === "1"}
     />
   );
 }

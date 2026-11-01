@@ -20,6 +20,8 @@ export const EXPENSE_CATEGORIES: Category[] = [
   { key: "health", label: "Health", tint: "bg-coral-tint", icon: "M12 20s-7-4.4-9.2-8.7A4.8 4.8 0 0 1 12 6.3a4.8 4.8 0 0 1 9.2 5C19 15.6 12 20 12 20z" },
   { key: "family", label: "Family", tint: "bg-sky-tint", icon: "M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM2 21c0-4 3-6 7-6s7 2 7 6M17 11a3 3 0 1 0 0-6M22 21c0-3-2-5-5-5" },
   { key: "fun", label: "Fun", tint: "bg-plum-tint", icon: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01" },
+  // Forgiven pautang ends up here.
+  { key: "gifts", label: "Gifts", tint: "bg-coral-tint", icon: "M3 8h18v4H3zM5 12v9h14v-9M12 8v13M12 8S10 3 7.5 4.5 9 8 12 8zM12 8s2-5 4.5-3.5S15 8 12 8z" },
   // BNPL fees and loan interest: the only part of an installment that's spending.
   { key: "fees", label: "Fees & interest", tint: "bg-coral-tint", icon: "M19 5 5 19M7 7h.01M17 17h.01M7.5 9a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM16.5 18a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z" },
   { key: "other", label: "Other", tint: "bg-line-soft", icon: "M5 12h.01M12 12h.01M19 12h.01" },
