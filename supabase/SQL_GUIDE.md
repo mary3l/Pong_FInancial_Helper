@@ -206,6 +206,23 @@ where grantee = 'anon' and table_schema = 'public';
 
 Run them one at a time: both should say **Success. No rows returned**.
 
+## Step 9 · Home screen widget
+
+File: `migrations/0009_widget.sql`
+
+Adds `widget_keys` and the `widget_spent_today` function for the iPhone widget
+(Settings › Home screen widget). Only a hash of each widget key is stored, and the key can
+read one thing: what you spent today.
+
+**Check**
+
+```sql
+select to_regclass('public.widget_keys') is not null
+   and to_regprocedure('public.widget_spent_today(text)') is not null as ok;
+```
+
+Expect `true`.
+
 ---
 
 ## All done?
@@ -223,7 +240,8 @@ select
   to_regclass('public.person_entries') is not null          as step_6,
   to_regclass('public.grocery_items') is not null           as step_7,
   exists (select 1 from pg_constraint
-          where conname = 'accounts_credit_limit_type_check') as step_8;
+          where conname = 'accounts_credit_limit_type_check') as step_8,
+  to_regclass('public.widget_keys') is not null             as step_9;
 ```
 
 The first `false` is the step to run next.

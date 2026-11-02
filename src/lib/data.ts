@@ -317,6 +317,18 @@ export async function getPeople({ includeArchived = false } = {}): Promise<Perso
 }
 
 /**
+ * When the home screen widget key was made, or null when there's none.
+ * `missing` means migration 0009 hasn't been run yet.
+ */
+export async function getWidgetKey(): Promise<{ createdAt: string } | null | "missing"> {
+  const supabase = await db();
+  const { data, error } = await supabase.from("widget_keys").select("created_at").maybeSingle();
+  if (error?.code === "PGRST205") return "missing";
+  if (error) throw dbError(error);
+  return data ? { createdAt: data.created_at } : null;
+}
+
+/**
  * Grocery mode: price memory (barcode → name and latest price per store),
  * the stores you've shopped at, most recent first.
  */

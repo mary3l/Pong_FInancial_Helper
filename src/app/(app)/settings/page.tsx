@@ -3,8 +3,10 @@ import { Suspense } from "react";
 import { signOut } from "@/app/actions";
 import { DisplayNameForm } from "@/components/display-name-form";
 import { ChevronIcon } from "@/components/icons";
+import { WidgetSetup } from "@/components/widget-setup";
 import { getCurrentUser } from "@/lib/auth";
-import { getBudgets, getRecurringItems } from "@/lib/data";
+import { getBudgets, getRecurringItems, getWidgetKey } from "@/lib/data";
+import { formatShortDay, today } from "@/lib/dates";
 import { formatPeso } from "@/lib/money";
 import { describeSchedule } from "@/lib/schedule";
 
@@ -45,6 +47,13 @@ export default function SettingsPage() {
         <Row title="Salary breakdown" detail="SSS, PhilHealth, Pag-IBIG, tax" soon />
         <Row title="Import CSV · Export · Backup" soon />
       </Group>
+
+      <section className="flex flex-col gap-4 rounded-3xl bg-white p-6">
+        <h2 className="font-display text-xl font-semibold">Home screen widget</h2>
+        <Suspense fallback={<div className="h-40 rounded-[14px] bg-line-soft" />}>
+          <Widget />
+        </Suspense>
+      </section>
 
       <section className="flex flex-col gap-4 rounded-3xl bg-white p-6">
         <h2 className="font-display text-xl font-semibold">Profile</h2>
@@ -143,6 +152,19 @@ async function BudgetsRow() {
       href="/plan/budgets"
     />
   );
+}
+
+async function Widget() {
+  const key = await getWidgetKey();
+  if (key === "missing") {
+    return (
+      <p className="text-[15px] text-muted">
+        Run step 9 in <strong className="text-ink">supabase/SQL_GUIDE.md</strong> to turn on the home
+        screen widget.
+      </p>
+    );
+  }
+  return <WidgetSetup keyMadeOn={key ? `on ${formatShortDay(today(new Date(key.createdAt)))}` : null} />;
 }
 
 async function Profile() {

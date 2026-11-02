@@ -40,6 +40,10 @@ Screens and the phased dev plan live on the design canvas.
   money rules, pay and bill schedules, the forecast and Safe to spend, Philippine-time dates and the
   keypad.
 - `src/components/pong.tsx` is Pong, with every mood. Swap the art there.
+- `public/pong-widget.js` is the iPhone home screen widget (Spent today) for the Scriptable app.
+  Settings › Home screen widget makes its widget key (`src/app/widget-actions.ts`); the widget
+  reads Supabase directly through `widget_spent_today` (migration 0009), so it works even when
+  this app isn't reachable from the phone.
 - `scripts/make-icons.mjs` regenerates the app icons.
 - `public/sw.js` is the service worker (production only): it caches the hashed build files
   and shows `public/offline.html` when a page is opened with no signal. Pages themselves are
