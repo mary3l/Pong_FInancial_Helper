@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { addCreditLine, updateCreditLine } from "@/app/credit-actions";
+import { AmountInput } from "@/components/amount-input";
 import { ChoiceChip, FIELD_CLASS } from "@/components/choice-chip";
 import type { Account } from "@/lib/data";
 import { parseAmount } from "@/lib/money";
@@ -68,7 +69,7 @@ export function CreditLineForm({ account, onDone }: { account?: Account; onDone?
           </label>
           <div className="relative">
             <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">₱</span>
-            <input id={`credit-limit-${id}`} value={limit} onChange={(e) => setLimit(e.target.value)} inputMode="decimal" placeholder="0.00" className={`${FIELD_CLASS} w-full pl-8 text-right`} />
+            <AmountInput id={`credit-limit-${id}`} value={limit} onChange={setLimit} placeholder="0.00" className={`${FIELD_CLASS} w-full pl-8 text-right`} />
           </div>
         </div>
         <div className="flex flex-col gap-1">
@@ -85,7 +86,7 @@ export function CreditLineForm({ account, onDone }: { account?: Account; onDone?
         <label htmlFor={`credit-used-${id}`} className="text-sm font-bold">You owe on it now</label>
         <div className="relative">
           <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">₱</span>
-          <input id={`credit-used-${id}`} value={used} onChange={(e) => setUsed(e.target.value)} inputMode="decimal" placeholder="0.00" className={`${FIELD_CLASS} w-full pl-8 text-right`} />
+          <AmountInput id={`credit-used-${id}`} value={used} onChange={setUsed} placeholder="0.00" className={`${FIELD_CLASS} w-full pl-8 text-right`} />
         </div>
         <span className="text-xs text-muted">
           {account

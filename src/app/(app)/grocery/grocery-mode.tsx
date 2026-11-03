@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState, useTransition } from "react";
 import { saveGroceryTrip } from "@/app/grocery-actions";
+import { AmountInput } from "@/components/amount-input";
 import { ChoiceChip, FIELD_CLASS } from "@/components/choice-chip";
 import { Pong } from "@/components/pong";
 import { clearTrip, loadTrip, saveTrip, type ActiveTrip } from "@/lib/active-trip";
@@ -188,13 +189,12 @@ function StartTrip({
 
       <div className="flex flex-col items-center gap-1 rounded-[20px] bg-white p-4">
         <label htmlFor="trip-budget" className="text-[13px] font-extrabold text-muted">BUDGET FOR THIS TRIP</label>
-        <input
+        <AmountInput
           id="trip-budget"
           value={budget}
-          onChange={(e) => setBudget(e.target.value)}
-          inputMode="decimal"
+          onChange={setBudget}
           placeholder="₱ 0"
-          className="w-full bg-transparent text-center font-display text-4xl font-semibold outline-none"
+          className="w-full bg-transparent pl-11 text-center font-display text-4xl font-semibold outline-none"
         />
         <span className="text-xs text-muted">
           {groceriesLeft !== null ? (
@@ -427,11 +427,11 @@ function Scanning({
           className="flex flex-col gap-2 rounded-[20px] bg-white p-4"
         >
           <span className="text-sm font-extrabold">New item · I&apos;ll remember it next time</span>
-          <div className="grid grid-cols-[minmax(0,1fr)_7rem] gap-2">
+          <div className="grid grid-cols-[minmax(0,1fr)_8rem] gap-2">
             <label htmlFor="new-name" className="sr-only">Item name</label>
             <input id="new-name" autoFocus value={unknownName} onChange={(e) => setUnknownName(e.target.value)} maxLength={80} placeholder="Name, e.g. Rice 5 kg" className={FIELD_CLASS} />
             <label htmlFor="new-price" className="sr-only">Price</label>
-            <input id="new-price" value={unknownPrice} onChange={(e) => setUnknownPrice(e.target.value)} inputMode="decimal" placeholder="₱ 0" className={`${FIELD_CLASS} text-right`} />
+            <AmountInput id="new-price" value={unknownPrice} onChange={setUnknownPrice} placeholder="₱ 0" className={`${FIELD_CLASS} pl-3 text-right`} />
           </div>
           <div className="flex gap-2">
             <button type="submit" className="h-11 rounded-[14px] bg-sun px-5 font-extrabold text-ink">Add</button>
@@ -453,7 +453,7 @@ function Scanning({
           setName("");
           setPrice("");
         }}
-        className="grid grid-cols-[minmax(0,1fr)_6rem_auto] items-end gap-2"
+        className="grid grid-cols-[minmax(0,1fr)_7.5rem_auto] items-end gap-2"
       >
         <div className="flex flex-col gap-1">
           <label htmlFor="manual-name" className="text-xs font-extrabold">No barcode? Item</label>
@@ -461,7 +461,7 @@ function Scanning({
         </div>
         <div className="flex flex-col gap-1">
           <label htmlFor="manual-price" className="text-xs font-extrabold">Price</label>
-          <input id="manual-price" value={price} onChange={(e) => setPrice(e.target.value)} inputMode="decimal" placeholder="₱ 0" className={`${FIELD_CLASS} text-right`} />
+          <AmountInput id="manual-price" value={price} onChange={setPrice} placeholder="₱ 0" className={`${FIELD_CLASS} pl-3 text-right`} />
         </div>
         <button type="submit" className="h-12 rounded-[14px] bg-white px-4 font-extrabold text-ink">Add</button>
       </form>
@@ -540,7 +540,7 @@ function Checkout({
           <label htmlFor="receipt" className="font-extrabold">Receipt total</label>
           <div className="relative w-40">
             <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">₱</span>
-            <input id="receipt" value={receipt} onChange={(e) => setReceipt(e.target.value)} inputMode="decimal" className={`${FIELD_CLASS} w-full pl-8 text-right font-extrabold`} />
+            <AmountInput id="receipt" value={receipt} onChange={setReceipt} className={`${FIELD_CLASS} w-full pl-8 text-right font-extrabold`} />
           </div>
         </div>
         <div className="flex justify-between text-[15px]">

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { addWallets, type WalletInput } from "@/app/wallet-actions";
+import { AmountInput } from "@/components/amount-input";
 import { FIELD_CLASS } from "@/components/choice-chip";
 import type { Account } from "@/lib/data";
 import {
@@ -115,11 +116,10 @@ export function WalletsForm({ existing }: { existing: Account[] }) {
               )}
               <div className="relative w-36 shrink-0">
                 <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">₱</span>
-                <input
+                <AmountInput
                   id={`amount-${row.key}`}
                   value={row.amount}
-                  onChange={(e) => update(row.key, { amount: e.target.value })}
-                  inputMode="decimal"
+                  onChange={(v) => update(row.key, { amount: v })}
                   placeholder="0.00"
                   aria-label={row.custom ? "Amount in it now" : undefined}
                   className={`${FIELD_CLASS} w-full pl-8 text-right`}

@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { finishSetup, savePaydayAndBills, type BillInput } from "@/app/setup-actions";
+import { AmountInput } from "@/components/amount-input";
 import { ChoiceChip, FIELD_CLASS } from "@/components/choice-chip";
 import type { Account, RecurringItem } from "@/lib/data";
 import { parseAmount } from "@/lib/money";
@@ -200,7 +201,7 @@ export function PaydayForm({
               <label htmlFor="net-pay" className="text-sm font-bold">Net pay per payday <span className="font-semibold text-muted">(optional)</span></label>
               <div className="relative">
                 <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">₱</span>
-                <input id="net-pay" value={netPay} onChange={(e) => setNetPay(e.target.value)} inputMode="decimal" placeholder="0.00" className={`${FIELD_CLASS} w-full pl-8`} />
+                <AmountInput id="net-pay" value={netPay} onChange={setNetPay} placeholder="0.00" className={`${FIELD_CLASS} w-full pl-8`} />
               </div>
             </div>
             {accounts.length > 0 && (
@@ -234,7 +235,7 @@ export function PaydayForm({
                 <label htmlFor={`bill-amount-${row.key}`} className="text-sm font-bold">Amount</label>
                 <div className="relative">
                   <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">₱</span>
-                  <input id={`bill-amount-${row.key}`} value={row.amount} onChange={(e) => update(row.key, { amount: e.target.value })} inputMode="decimal" placeholder="0.00" className={`${FIELD_CLASS} w-full pl-8 text-right`} />
+                  <AmountInput id={`bill-amount-${row.key}`} value={row.amount} onChange={(v) => update(row.key, { amount: v })} placeholder="0.00" className={`${FIELD_CLASS} w-full pl-8 text-right`} />
                 </div>
               </div>
             </div>

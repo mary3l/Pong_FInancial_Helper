@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { forgive, recordPayment, renamePerson, settlePerson } from "@/app/people-actions";
+import { AmountInput } from "@/components/amount-input";
 import { FIELD_CLASS } from "@/components/choice-chip";
 import type { Account } from "@/lib/data";
 import { formatPeso, parseAmount } from "@/lib/money";
@@ -80,7 +81,7 @@ export function PaymentForm({
           <label htmlFor="pay-amount" className="text-sm font-bold">Amount</label>
           <div className="relative">
             <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">₱</span>
-            <input id="pay-amount" value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" className={`${FIELD_CLASS} w-full pl-8 text-right`} />
+            <AmountInput id="pay-amount" value={amount} onChange={setAmount} className={`${FIELD_CLASS} w-full pl-8 text-right`} />
           </div>
         </div>
         <div className="flex flex-col gap-1">

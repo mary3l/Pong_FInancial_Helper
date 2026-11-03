@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { removeBudget, saveBudget } from "@/app/plan-actions";
+import { AmountInput } from "@/components/amount-input";
 import { FIELD_CLASS } from "@/components/choice-chip";
 import { PathIcon } from "@/components/icons";
 import { Pong } from "@/components/pong";
@@ -194,11 +195,10 @@ function BudgetForm({
           <label htmlFor={`budget-amount-${id}`} className="text-sm font-bold">Per kinsenas</label>
           <div className="relative">
             <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">₱</span>
-            <input
+            <AmountInput
               id={`budget-amount-${id}`}
               value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              inputMode="decimal"
+              onChange={setAmount}
               placeholder="0.00"
               required
               className={`${FIELD_CLASS} w-full pl-8 text-right`}

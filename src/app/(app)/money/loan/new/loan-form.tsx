@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { addLoan } from "@/app/credit-actions";
+import { AmountInput } from "@/components/amount-input";
 import { ChoiceChip, FIELD_CLASS } from "@/components/choice-chip";
 import type { Account } from "@/lib/data";
 import { formatShortDay, isValidDate } from "@/lib/dates";
@@ -70,7 +71,7 @@ export function LoanForm({ wallets, today }: { wallets: Account[]; today: string
       <label htmlFor={id} className="text-sm font-bold">{label}</label>
       <div className="relative">
         <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">₱</span>
-        <input id={id} value={value} onChange={(e) => set(e.target.value)} inputMode="decimal" placeholder="0.00" className={`${FIELD_CLASS} w-full pl-8 text-right`} />
+        <AmountInput id={id} value={value} onChange={set} placeholder="0.00" className={`${FIELD_CLASS} w-full pl-8 text-right`} />
       </div>
     </div>
   );

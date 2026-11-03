@@ -9,7 +9,9 @@ import {
   saveBnplPurchase,
   saveTransaction,
 } from "@/app/transaction-actions";
+import { AmountInput } from "@/components/amount-input";
 import { CloseIcon, PathIcon } from "@/components/icons";
+import { Keypad } from "@/components/keypad";
 import { Pong, type PongMood } from "@/components/pong";
 import {
   amountToExpression,
@@ -69,36 +71,6 @@ export type Prefill = {
   note: string;
   /** "<recurring item id>|<date>": saving logs that occurrence. */
   link: string | null;
-};
-
-type KeyDef = { key: Key; label: string; kind: "num" | "op" | "fn" | "eq"; className?: string };
-
-const KEYS: KeyDef[] = [
-  { key: "C", label: "Clear", kind: "fn" },
-  { key: "⌫", label: "Delete last digit", kind: "fn" },
-  { key: "÷", label: "Divide", kind: "op" },
-  { key: "×", label: "Multiply", kind: "op" },
-  { key: "7", label: "7", kind: "num" },
-  { key: "8", label: "8", kind: "num" },
-  { key: "9", label: "9", kind: "num" },
-  { key: "−", label: "Minus", kind: "op" },
-  { key: "4", label: "4", kind: "num" },
-  { key: "5", label: "5", kind: "num" },
-  { key: "6", label: "6", kind: "num" },
-  { key: "+", label: "Plus", kind: "op" },
-  { key: "1", label: "1", kind: "num" },
-  { key: "2", label: "2", kind: "num" },
-  { key: "3", label: "3", kind: "num" },
-  { key: "=", label: "Equals", kind: "eq", className: "row-span-2" },
-  { key: "0", label: "0", kind: "num", className: "col-span-2" },
-  { key: ".", label: "Decimal point", kind: "num" },
-];
-
-const KEY_STYLE = {
-  num: "bg-white font-medium",
-  op: "bg-sun-tint font-semibold",
-  fn: "bg-[#e3efe8] font-semibold",
-  eq: "bg-sea font-semibold text-white",
 };
 
 export function TransactionForm({
@@ -444,19 +416,7 @@ export function TransactionForm({
           </span>
         </div>
 
-        <div className="order-9 grid grid-cols-4 grid-rows-[repeat(5,48px)] gap-2 lg:order-none lg:grid-rows-[repeat(5,58px)]">
-          {KEYS.map((k) => (
-            <button
-              key={k.key}
-              type="button"
-              aria-label={k.label}
-              onClick={() => pressKey(k.key)}
-              className={`rounded-2xl font-display text-[24px] active:scale-95 ${KEY_STYLE[k.kind]} ${k.className ?? ""}`}
-            >
-              {k.key}
-            </button>
-          ))}
-        </div>
+        <Keypad onPress={pressKey} className="order-9 grid-rows-[repeat(5,48px)] lg:order-none lg:grid-rows-[repeat(5,58px)]" />
 
         <p className="hidden flex-wrap gap-x-3.5 gap-y-1.5 text-[13px] text-muted lg:flex">
           <strong className="text-ink">Keyboard works too:</strong>
@@ -614,13 +574,13 @@ export function TransactionForm({
                         <li key={p.key} className="flex items-center justify-between gap-3 text-[15px]">
                           <span className="font-bold">{p.name}</span>
                           {splitMethod === "exact" ? (
-                            <input
+                            <AmountInput
                               aria-label={`${p.name}'s share`}
                               value={exact[p.key] ?? ""}
-                              onChange={(e) => setExact((x) => ({ ...x, [p.key]: e.target.value }))}
-                              inputMode="decimal"
+                              onChange={(v) => setExact((x) => ({ ...x, [p.key]: v }))}
                               placeholder="0.00"
-                              className="h-9 w-28 rounded-[12px] bg-mint px-3 text-right text-[15px] outline-none focus:ring-2 focus:ring-sea"
+                              wrapperClassName="w-32"
+                              className="h-9 w-full rounded-[12px] bg-mint px-3 text-right text-[15px] outline-none focus:ring-2 focus:ring-sea"
                             />
                           ) : (
                             <span className="font-display font-semibold">

@@ -105,6 +105,24 @@ export function prettyExpression(expr: string): string {
   return expr.replace(/([+−×÷])/g, " $1 ");
 }
 
+const NUMBER = String.raw`(?:\d+(?:\.\d*)?|\.\d+)`;
+const TYPED = new RegExp(`^${NUMBER}(?:[+−×÷]${NUMBER})*[+−×÷]?$`);
+
+/**
+ * Typed text as a keypad expression, e.g. "1,200 + 3*45" → "1200+3×45", or
+ * null when it isn't one. Takes the keyboard's - * x / as well.
+ */
+export function expressionFromText(text: string): string | null {
+  const e = text
+    .replace(/[₱,\s]/g, "")
+    .replace(/-/g, "−")
+    .replace(/[*xX]/g, "×")
+    .replace(/\//g, "÷");
+  if (!TYPED.test(e)) return null;
+  // ".5" → "0.5" and "12." → "12", so evaluate reads every number whole.
+  return e.replace(/(^|[+−×÷])\./g, (_, op) => `${op}0.`).replace(/\.(?=[+−×÷]|$)/g, "");
+}
+
 /** An amount as keypad text, e.g. 150.5 → "150.5". */
 export function amountToExpression(amount: number): string {
   return String(Math.round(amount * 100) / 100);

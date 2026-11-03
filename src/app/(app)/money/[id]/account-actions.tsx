@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { addUpcomingPayments, payInstallments, removePlan } from "@/app/credit-actions";
 import { removeWallet, restoreWallet } from "@/app/wallet-actions";
+import { AmountInput } from "@/components/amount-input";
 import { ChoiceChip, FIELD_CLASS } from "@/components/choice-chip";
 import type { Account } from "@/lib/data";
 import { formatShortDay, isValidDate } from "@/lib/dates";
@@ -243,11 +244,10 @@ export function UpcomingPayments({
           <label htmlFor="upcoming-amount" className="text-sm font-bold">{installment ? "Monthly payment" : "Amount"}</label>
           <div className="relative">
             <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">₱</span>
-            <input
+            <AmountInput
               id="upcoming-amount"
               value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              inputMode="decimal"
+              onChange={setAmount}
               placeholder="0.00"
               required
               autoFocus
@@ -291,11 +291,10 @@ export function UpcomingPayments({
               </label>
               <div className="relative">
                 <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">₱</span>
-                <input
+                <AmountInput
                   id="upcoming-fee"
                   value={fee}
-                  onChange={(e) => setFee(e.target.value)}
-                  inputMode="decimal"
+                  onChange={setFee}
                   placeholder="0.00"
                   aria-describedby="upcoming-fee-hint"
                   className={`${FIELD_CLASS} w-full pl-8 text-right`}

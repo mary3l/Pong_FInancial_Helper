@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { lendOrBorrow } from "@/app/people-actions";
+import { AmountInput } from "@/components/amount-input";
 import { ChoiceChip, FIELD_CLASS } from "@/components/choice-chip";
 import type { Account } from "@/lib/data";
 import { parseAmount } from "@/lib/money";
@@ -128,13 +129,12 @@ export function LendForm({
 
       <div className="flex flex-col items-center gap-1">
         <label htmlFor="lend-amount" className="text-[13px] font-bold text-muted">AMOUNT</label>
-        <input
+        <AmountInput
           id="lend-amount"
           value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          inputMode="decimal"
+          onChange={setAmount}
           placeholder="₱ 0.00"
-          className="w-full border-b-2 border-ink bg-transparent py-1 text-center font-display text-4xl font-semibold outline-none focus:border-sea"
+          className="w-full border-b-2 border-ink bg-transparent py-1 pl-11 text-center font-display text-4xl font-semibold outline-none focus:border-sea"
         />
       </div>
 

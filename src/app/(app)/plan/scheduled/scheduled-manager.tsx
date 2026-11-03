@@ -8,6 +8,7 @@ import {
   type ScheduledInput,
   type ScheduledRef,
 } from "@/app/schedule-actions";
+import { AmountInput } from "@/components/amount-input";
 import { ChoiceChip, FIELD_CLASS } from "@/components/choice-chip";
 import { PathIcon } from "@/components/icons";
 import { LogButton } from "@/components/log-button";
@@ -428,11 +429,10 @@ function ScheduledForm({
           <label htmlFor={`sched-amount-${key}`} className="text-sm font-bold">Amount</label>
           <div className="relative">
             <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">₱</span>
-            <input
+            <AmountInput
               id={`sched-amount-${key}`}
               value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              inputMode="decimal"
+              onChange={setAmount}
               placeholder="0.00"
               className={`${FIELD_CLASS} w-full pl-8 text-right`}
             />

@@ -9,6 +9,7 @@ import {
   updateWallet,
   type WalletResult,
 } from "@/app/wallet-actions";
+import { AmountInput } from "@/components/amount-input";
 import { FIELD_CLASS } from "@/components/choice-chip";
 import type { Account } from "@/lib/data";
 import { daysBetween, formatShortDay } from "@/lib/dates";
@@ -237,7 +238,7 @@ function WalletForm({
           <label htmlFor={`wallet-balance-${id}`} className="text-sm font-bold">In it now</label>
           <div className="relative">
             <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">₱</span>
-            <input id={`wallet-balance-${id}`} value={balance} onChange={(e) => setBalance(e.target.value)} inputMode="decimal" placeholder="0.00" className={`${FIELD_CLASS} w-full pl-8 text-right`} />
+            <AmountInput id={`wallet-balance-${id}`} value={balance} onChange={setBalance} placeholder="0.00" className={`${FIELD_CLASS} w-full pl-8 text-right`} />
           </div>
         </div>
       </div>
