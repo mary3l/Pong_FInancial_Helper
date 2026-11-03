@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bnplFee, bnplFirstDue, buildSchedule, dueText, loanSchedule, loanSummary } from "@/lib/installments";
+import { bnplFee, bnplFirstDue, buildSchedule, dueText, loanSchedule, loanSummary, upcomingSchedule } from "@/lib/installments";
 import { roundCents } from "@/lib/money";
 
 const sum = (values: number[]) => roundCents(values.reduce((a, b) => a + b, 0));
@@ -52,5 +52,22 @@ describe("loans", () => {
     expect(dueText("2026-11-02", "2026-11-02")).toBe("Due today");
     expect(dueText("2026-11-05", "2026-11-02")).toBe("Due in 3 days");
     expect(dueText("2026-10-31", "2026-11-02")).toBe("2 days late");
+  });
+});
+
+describe("upcoming payments and running installments", () => {
+  it("a single bill is one payment, all principal", () => {
+    const rows = upcomingSchedule({ amount: 5885.65, fee: 0, months: 1, alreadyPaid: 0 }, "2026-12-05");
+    expect(rows).toEqual([{ seq: 1, dueOn: "2026-12-05", amount: 5885.65, principalPart: 5885.65, feePart: 0 }]);
+  });
+
+  it("an installment already 3 of 6 in has the last 3 left, numbered 4 to 6", () => {
+    const rows = upcomingSchedule({ amount: 1200, fee: 150, months: 6, alreadyPaid: 3 }, "2026-11-30");
+    expect(rows.map((r) => r.seq)).toEqual([4, 5, 6]);
+    // Short months fall back to their last day.
+    expect(rows.map((r) => r.dueOn)).toEqual(["2026-11-30", "2026-12-30", "2027-01-30"]);
+    // Only the interest is spending; the rest pays down what you owe.
+    expect(rows.every((r) => r.principalPart === 1050 && r.feePart === 150 && r.amount === 1200)).toBe(true);
+    expect(sum(rows.map((r) => r.principalPart))).toBe(3150);
   });
 });

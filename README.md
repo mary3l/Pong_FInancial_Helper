@@ -60,10 +60,13 @@ wallet to the credit line, plus an expense for the fee. Loans (SLoan, MariLoan):
 received is a transfer from the loan account, never income; each amortization is a transfer
 for the principal plus an expense for the interest. `src/lib/installments.ts` has the math.
 
-Upcoming payments on SPayLater or Atome (the **+** on a credit line): bills you already expect,
-like ones from before you used Pong. They're a payment plan with no purchase behind it, so they
-count in Coming up, the forecast and Safe to spend. They only raise what you owe if you tick
-"Add it to what I owe" (for a purchase you haven't logged).
+Upcoming payments on SPayLater, Atome or a bank credit line like MariBank (the **+** on a credit
+line): a bill you already expect, or an installment that's already running ("4 of 6", with the
+interest or fee in each payment). They're a payment plan with no purchase behind it, so they
+count in Coming up, the forecast and Safe to spend, and the interest part is an expense when you
+pay. They only raise what you owe (by the principal left) if you tick "Add it to what I owe", for
+a purchase you haven't logged. The credit line screen shows one bill per due date, so a purchase
+logged with + adds to the bill it's due with.
 
 Wallet categories: each cash, bank or e-wallet is Spending, Savings, Emergency fund or
 Investments. All of it counts in You have and Net worth; only Spending counts in Safe to spend

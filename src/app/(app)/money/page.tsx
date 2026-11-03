@@ -164,7 +164,7 @@ async function Wallets() {
               href="/money/credit/new"
               className="flex h-[52px] items-center justify-center rounded-[20px] border-2 border-dashed border-line font-extrabold text-ink hover:bg-white"
             >
-              + BNPL (SPayLater, Atome)
+              + BNPL &amp; installments (SPayLater, Atome, MariBank)
             </Link>
             <Link
               href="/money/loan/new"

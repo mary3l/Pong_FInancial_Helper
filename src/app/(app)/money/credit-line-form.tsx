@@ -7,7 +7,8 @@ import { ChoiceChip, FIELD_CLASS } from "@/components/choice-chip";
 import type { Account } from "@/lib/data";
 import { parseAmount } from "@/lib/money";
 
-const PROVIDERS = ["SPayLater", "Atome", "GGives", "Home Credit"];
+// BNPL apps, and banks that turn purchases into installments.
+const PROVIDERS = ["SPayLater", "Atome", "MariBank Credit", "GoTyme Credit", "GGives", "Home Credit"];
 
 const DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
 

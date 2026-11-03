@@ -3,8 +3,7 @@
 import { refresh } from "next/cache";
 import { SIGNED_OUT_ERROR, signedInClient } from "@/lib/auth";
 import { isValidDate, today } from "@/lib/dates";
-import { monthlyDates } from "@/lib/forecast";
-import { loanSchedule } from "@/lib/installments";
+import { loanSchedule, upcomingSchedule } from "@/lib/installments";
 import { MAX_AMOUNT, isSpendable, roundCents, type AccountType } from "@/lib/money";
 import { pickWallet, savePlan } from "@/lib/server-writes";
 
@@ -104,29 +103,40 @@ export async function updateCreditLine(id: string, input: CreditLineInput): Prom
 export type UpcomingInput = {
   /** What it's for, like "Shopee order". */
   name: string;
-  /** Each payment. */
+  /** Each payment, interest or fee included. */
   amount: number;
+  /** The interest or fee inside each payment; 0 for none. */
+  fee: number;
+  /** When the next payment is due. */
   firstDue: string;
-  /** 1 for a single bill; more repeats it monthly. */
+  /** The whole installment: 1 for a single bill. */
   months: number;
-  /** True when it isn't in "You owe on it now" yet: what you owe goes up by the total. */
+  /** Payments of the installment made before you added it here. */
+  alreadyPaid: number;
+  /** True when it isn't in "You owe on it now" yet: what you owe goes up by what's left to pay. */
   addToOwed: boolean;
 };
 
 /**
- * Payments you expect on SPayLater or Atome, like bills from before you
- * used Pong or ones the provider's app already shows. Saved as a plan with
- * no purchase behind it, so they're in Coming up, the forecast and Safe to
- * spend, and Pay bill moves money to the credit line as usual.
+ * Payments you expect on SPayLater, Atome or a bank's credit line: a bill
+ * the provider's app already shows, or an installment that's already
+ * running ("4 of 6"). Saved as a plan with no purchase behind it, so
+ * they're in Coming up, the forecast and Safe to spend, and Pay bill moves
+ * money to the credit line as usual. The interest or fee part is an expense.
  */
 export async function addUpcomingPayments(accountId: string, input: UpcomingInput): Promise<CreditResult> {
   const name = cleanName(input.name) || "Upcoming bill";
   if (name.length > 60) return { error: "Keep the name to 60 characters." };
   if (!validAmount(input.amount)) return { error: "Enter how much you'll pay." };
-  if (!Number.isInteger(input.months) || input.months < 1 || input.months > 24) return { error: "Pick how many months." };
+  if (!validAmount(input.fee, true) || input.fee >= input.amount) {
+    return { error: "The interest or fee has to be less than the payment." };
+  }
+  if (!Number.isInteger(input.months) || input.months < 1 || input.months > 36) return { error: "Pick how many months." };
+  if (!Number.isInteger(input.alreadyPaid) || input.alreadyPaid < 0 || input.alreadyPaid >= input.months) {
+    return { error: "Check how many payments you've already made." };
+  }
   if (!isValidDate(input.firstDue)) return { error: "Pick when it's due." };
-  const total = roundCents(input.amount * input.months);
-  if (total > MAX_AMOUNT) return { error: "That amount is too big." };
+  if (roundCents(input.amount * input.months) > MAX_AMOUNT) return { error: "That amount is too big." };
 
   const supabase = await signedInClient();
   if (!supabase) return { error: SIGNED_OUT_ERROR };
@@ -138,19 +148,14 @@ export async function addUpcomingPayments(accountId: string, input: UpcomingInpu
     .maybeSingle();
   if (!account) return { error: "Couldn't find that credit line." };
 
-  const amount = roundCents(input.amount);
-  const rows = monthlyDates(input.firstDue, input.months).map((dueOn, i) => ({
-    seq: i + 1,
-    dueOn,
-    amount,
-    principalPart: amount,
-    feePart: 0,
-  }));
+  const rows = upcomingSchedule(input, input.firstDue);
+  // What's still owed on it: the principal of the payments left. Interest is counted as you pay.
+  const owedLeft = roundCents(rows.reduce((sum, r) => sum + r.principalPart, 0));
   const saved = await savePlan(supabase, {
     kind: "bnpl",
     accountId,
     name,
-    principal: total,
+    principal: roundCents(rows[0].principalPart * input.months),
     months: input.months,
     payFromAccountId: null,
     sourceTxnId: null,
@@ -161,7 +166,7 @@ export async function addUpcomingPayments(accountId: string, input: UpcomingInpu
   if (input.addToOwed) {
     const { error } = await supabase
       .from("accounts")
-      .update({ starting_balance: roundCents(Number(account.starting_balance) - total) })
+      .update({ starting_balance: roundCents(Number(account.starting_balance) - owedLeft) })
       .eq("id", accountId);
     if (error) {
       await supabase.from("installment_plans").delete().eq("id", saved);

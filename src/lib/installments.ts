@@ -112,3 +112,31 @@ export function dueText(dueOn: string, today: string): string {
   if (days > 1) return `Due in ${days} days`;
   return days === -1 ? "1 day late" : `${-days} days late`;
 }
+
+export type UpcomingTerms = {
+  /** Each payment, interest or fee included. */
+  amount: number;
+  /** The interest or fee inside each payment: an expense when paid. */
+  fee: number;
+  /** The whole installment: 1 for a single bill. */
+  months: number;
+  /** Payments made before you added it here. */
+  alreadyPaid: number;
+};
+
+/**
+ * An installment already running on SPayLater, Atome or a bank's credit
+ * line: the payments still to make, numbered "4 of 6", the next due on
+ * `nextDue`.
+ */
+export function upcomingSchedule({ amount, fee, months, alreadyPaid }: UpcomingTerms, nextDue: string): PaymentRow[] {
+  const feePart = roundCents(Math.min(fee, amount));
+  const principalPart = roundCents(amount - feePart);
+  return monthlyDates(nextDue, months - alreadyPaid).map((dueOn, i) => ({
+    seq: alreadyPaid + i + 1,
+    dueOn,
+    amount: roundCents(principalPart + feePart),
+    principalPart,
+    feePart,
+  }));
+}
