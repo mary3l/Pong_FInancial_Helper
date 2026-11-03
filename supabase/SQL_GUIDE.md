@@ -246,6 +246,29 @@ where table_name = 'accounts' and column_name in ('purpose', 'interest_rate', 'i
 
 Expect `3`.
 
+## Step 11 · GoTyme monthly interest
+
+File: `migrations/0011_interest_payout.sql`
+
+Lets a wallet say **when** the bank credits its interest. MariBank adds it every day;
+GoTyme Go Save works it out daily but adds the month's interest on the 1st, after the
+20% tax.
+
+- `accounts.interest_payout`: `daily` or `monthly`. Every wallet you have starts as
+  `daily`, so nothing changes until you set a wallet to monthly.
+
+Until you run this, the app still works and treats every wallet's interest as daily;
+setting a wallet to monthly asks you to run this step.
+
+**Check**
+
+```sql
+select count(*) from information_schema.columns
+where table_name = 'accounts' and column_name = 'interest_payout';
+```
+
+Expect `1`.
+
 ---
 
 ## All done?
@@ -266,7 +289,9 @@ select
           where conname = 'accounts_credit_limit_type_check') as step_8,
   to_regclass('public.widget_keys') is not null             as step_9,
   exists (select 1 from information_schema.columns
-          where table_name = 'accounts' and column_name = 'purpose') as step_10;
+          where table_name = 'accounts' and column_name = 'purpose') as step_10,
+  exists (select 1 from information_schema.columns
+          where table_name = 'accounts' and column_name = 'interest_payout') as step_11;
 ```
 
 The first `false` is the step to run next.
