@@ -1,32 +1,36 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { connection } from "next/server";
 import { Suspense } from "react";
 import { LogButton } from "@/components/log-button";
 import { getAccounts, getInstallmentPlans, installmentInputs } from "@/lib/data";
-import { formatShortDay, today as getToday } from "@/lib/dates";
+import { addDays, formatShortDay, today as getToday } from "@/lib/dates";
 import { scheduledItems } from "@/lib/forecast";
 import { dueText } from "@/lib/installments";
 import { formatPeso, isDebt, roundCents } from "@/lib/money";
-import { AccountActions, PayBillButton, RemovePlanButton } from "./account-actions";
+import { nextOccurrence } from "@/lib/schedule";
+import { AccountActions, PayBillButton, RemovePlanButton, UpcomingPayments } from "./account-actions";
 
 export const metadata = { title: "Credit line · Pong Money" };
 
 // Design canvas 4.2 (SPayLater detail) and the same view for a loan: what
 // you owe, the next bill with Pay bill, active plans and upcoming payments.
-export default function AccountPage({ params }: PageProps<"/money/[id]">) {
+export default function AccountPage({ params, searchParams }: PageProps<"/money/[id]">) {
   return (
     <div className="flex flex-col gap-4 lg:max-w-3xl">
       <Link href="/money" className="flex h-10 w-fit items-center font-extrabold text-sea-dark">‹ Money</Link>
       <Suspense fallback={<div className="h-[560px] rounded-[20px] bg-line-soft" />}>
-        <Account params={params} />
+        <Account params={params} searchParams={searchParams} />
       </Suspense>
     </div>
   );
 }
 
-async function Account({ params }: Pick<PageProps<"/money/[id]">, "params">) {
-  const { id } = await params;
+async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
+  const [{ id }, query] = await Promise.all([params, searchParams]);
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
+  // Read the clock only at request time (Cache Components).
+  await connection();
   const today = getToday();
   const [accounts, plans] = await Promise.all([getAccounts({ includeArchived: true }), getInstallmentPlans(id)]);
   const account = accounts.find((a) => a.id === id);
@@ -39,10 +43,23 @@ async function Account({ params }: Pick<PageProps<"/money/[id]">, "params">) {
     today,
     "9999-12-31",
   );
+  // One bill per due date: everything due that day, like the provider's monthly statement.
+  const bills = [...new Set(upcoming.map((p) => p.dueOn))].map((dueOn) => {
+    const items = upcoming.filter((p) => p.dueOn === dueOn);
+    return { dueOn, items, total: roundCents(items.reduce((sum, p) => sum + (p.amount ?? 0), 0)) };
+  });
   const next = upcoming[0];
-  const nextBill = next ? upcoming.filter((p) => p.dueOn === next.dueOn) : [];
-  const nextTotal = roundCents(nextBill.reduce((sum, p) => sum + (p.amount ?? 0), 0));
+  const nextBill = bills[0]?.items ?? [];
+  const nextTotal = bills[0]?.total ?? 0;
   const credit = account.type === "credit_line";
+  // What you owe that no upcoming payment covers yet.
+  const unscheduled = Math.max(
+    0,
+    roundCents(owed - plans.flatMap((p) => p.payments).filter((p) => !p.transactionId).reduce((sum, p) => sum + p.principalPart, 0)),
+  );
+  const defaultDue = account.dueDay
+    ? nextOccurrence({ frequency: "monthly", day1: account.dueDay, day2: null }, today)
+    : addDays(today, 30);
 
   return (
     <>
@@ -94,6 +111,7 @@ async function Account({ params }: Pick<PageProps<"/money/[id]">, "params">) {
           <div className="flex flex-col">
             <span className={`text-[13px] font-bold ${next.dueOn < today ? "text-coral-text" : "text-muted"}`}>
               Next bill · {formatShortDay(next.dueOn, today)} · {dueText(next.dueOn, today)}
+              {nextBill.length > 1 && ` · ${nextBill.length} items`}
             </span>
             <span className="font-display text-2xl font-semibold">{formatPeso(nextTotal)}</span>
           </div>
@@ -106,6 +124,16 @@ async function Account({ params }: Pick<PageProps<"/money/[id]">, "params">) {
         interest part is an expense.
       </p>
 
+      {credit && !account.archived && (
+        <UpcomingPayments
+          account={account}
+          unscheduled={unscheduled}
+          defaultDue={defaultDue}
+          today={today}
+          startOpen={query.add === "upcoming"}
+        />
+      )}
+
       <section aria-labelledby="plans-heading" className="flex flex-col gap-2">
         <h2 id="plans-heading" className="font-display text-xl font-semibold">{credit ? "Active plans" : "Payment plan"}</h2>
         <ul className="flex flex-col rounded-[20px] bg-white px-4 py-1.5">
@@ -117,7 +145,7 @@ async function Account({ params }: Pick<PageProps<"/money/[id]">, "params">) {
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="truncate font-bold">{plan.name}</span>
                   <span className="text-[13px] text-muted">
-                    {plan.months === 1 ? "Pay next month" : `${plan.months} months`} · {paidCount} of {plan.months} paid
+                    {plan.months === 1 ? "One payment" : `${plan.months} months`} · {paidCount} of {plan.months} paid
                     {plan.feeTotal > 0 && ` · fees ${formatPeso(plan.feeTotal)}`}
                   </span>
                 </span>
@@ -131,31 +159,50 @@ async function Account({ params }: Pick<PageProps<"/money/[id]">, "params">) {
           {!plans.length && (
             <li className="py-3 text-[15px] text-muted">
               {credit
-                ? "No plans yet. Tap + and pay with this credit line to add a purchase and its payment plan."
+                ? "No plans yet. Log a purchase with + and pay with this credit line, or add a bill you expect with + Upcoming payment."
                 : "No payments scheduled."}
             </li>
           )}
         </ul>
       </section>
 
-      {upcoming.length > 0 && (
+      {bills.length > 0 && (
         <section aria-labelledby="upcoming-heading" className="flex flex-col gap-2">
-          <h2 id="upcoming-heading" className="font-display text-xl font-semibold">Upcoming payments</h2>
-          <ul className="flex flex-col rounded-[20px] bg-white px-4 py-1.5">
-            {upcoming.slice(0, 12).map((item) => (
-              <li key={item.key} className="flex items-center gap-3 border-b border-line-soft py-2.5 last:border-0">
-                <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="truncate font-bold">{item.name}</span>
-                  <span className={`text-[13px] ${item.dueOn < today ? "font-bold text-coral-text" : "text-muted"}`}>
-                    {formatShortDay(item.dueOn, today)} · {dueText(item.dueOn, today)}
+          <h2 id="upcoming-heading" className="font-display text-xl font-semibold">
+            {credit ? "Bills by due date" : "Upcoming payments"}
+          </h2>
+          {bills.slice(0, 8).map((bill) => (
+            <section
+              key={bill.dueOn}
+              aria-label={`${formatShortDay(bill.dueOn, today)} bill`}
+              className="flex flex-col rounded-[20px] bg-white px-4 py-1.5"
+            >
+              <div className="flex items-baseline justify-between gap-3 border-b-2 border-line-soft py-2.5">
+                <span className="flex flex-col">
+                  <span className="font-display text-lg font-semibold">{formatShortDay(bill.dueOn, today)} bill</span>
+                  <span className={`text-[13px] ${bill.dueOn < today ? "font-bold text-coral-text" : "text-muted"}`}>
+                    {dueText(bill.dueOn, today)}
+                    {bill.items.length > 1 && ` · ${bill.items.length} items`}
                   </span>
                 </span>
-                <span className="font-display text-[17px] font-semibold">{formatPeso(item.amount ?? 0)}</span>
-                <LogButton item={item} />
-              </li>
-            ))}
-          </ul>
-          <p className="text-xs text-muted">All of these are in your forecast and Safe to spend.</p>
+                <span className="font-display text-2xl font-semibold">{formatPeso(bill.total)}</span>
+              </div>
+              <ul className="flex flex-col">
+                {bill.items.map((item) => (
+                  <li key={item.key} className="flex items-center gap-3 border-b border-line-soft py-2.5 last:border-0">
+                    <span className="min-w-0 flex-1 truncate font-bold">{item.name}</span>
+                    <span className="font-display text-[17px] font-semibold">{formatPeso(item.amount ?? 0)}</span>
+                    <LogButton item={item} />
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+          <p className="text-xs text-muted">
+            {credit
+              ? "A purchase you log with + lands on the bill it's due with, and that bill's total goes up. All of these are in your forecast and Safe to spend."
+              : "All of these are in your forecast and Safe to spend."}
+          </p>
         </section>
       )}
 

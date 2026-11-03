@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { balanceEffect, cashflow, formatPeso, isDebt, isSpendable, parseAmount } from "@/lib/money";
+import {
+  balanceEffect,
+  canEarnInterest,
+  cashflow,
+  countsAsSpending,
+  dailyInterest,
+  formatPeso,
+  interestFor,
+  isDebt,
+  isSpendable,
+  parseAmount,
+} from "@/lib/money";
 
 const txn = (type: "expense" | "income" | "transfer", amount: number, accountId: string, toAccountId: string | null = null) => ({
   type,
@@ -94,5 +105,38 @@ describe("parsing and formatting", () => {
     expect(formatPeso(1250)).toBe("₱1,250");
     expect(formatPeso(1250.5)).toBe("₱1,250.50");
     expect(formatPeso(-20)).toBe("−₱20");
+  });
+});
+
+describe("wallet categories", () => {
+  it("only spending money counts in Safe to spend", () => {
+    expect(countsAsSpending({ type: "ewallet", purpose: "spending" })).toBe(true);
+    expect(countsAsSpending({ type: "bank", purpose: "savings" })).toBe(false);
+    expect(countsAsSpending({ type: "bank", purpose: "emergency" })).toBe(false);
+    expect(countsAsSpending({ type: "bank", purpose: "investment" })).toBe(false);
+    // Savings is still your money: it can pay bills and receive transfers.
+    expect(isSpendable("bank")).toBe(true);
+    expect(countsAsSpending({ type: "credit_line", purpose: "spending" })).toBe(false);
+  });
+});
+
+describe("daily interest (MariBank, GoTyme)", () => {
+  it("is the yearly rate over 365 days, less the 20% final tax", () => {
+    // ₱100,000 at 3.65% a year: ₱10 a day before tax, ₱8 after.
+    expect(dailyInterest(100_000, 3.65)).toBeCloseTo(8, 10);
+    expect(interestFor(100_000, 3.65, 30)).toBe(240);
+  });
+
+  it("is nothing on an empty or overdrawn balance, or for no days", () => {
+    expect(dailyInterest(0, 4)).toBe(0);
+    expect(dailyInterest(-500, 4)).toBe(0);
+    expect(interestFor(50_000, 4, 0)).toBe(0);
+    expect(interestFor(50_000, 4, -3)).toBe(0);
+  });
+
+  it("only banks and e-wallets earn it", () => {
+    expect(canEarnInterest("bank") && canEarnInterest("ewallet")).toBe(true);
+    expect(canEarnInterest("cash")).toBe(false);
+    expect(canEarnInterest("credit_line")).toBe(false);
   });
 });

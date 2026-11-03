@@ -2,12 +2,32 @@
 
 import { refresh } from "next/cache";
 import { SIGNED_OUT_ERROR, signedInClient } from "@/lib/auth";
-import { MAX_AMOUNT, isWalletType, roundCents, type WalletType } from "@/lib/money";
+import { today } from "@/lib/dates";
+import {
+  MAX_AMOUNT,
+  canEarnInterest,
+  isWalletPurpose,
+  isWalletType,
+  roundCents,
+  type WalletPurpose,
+  type WalletType,
+} from "@/lib/money";
 
-export type WalletInput = { name: string; type: WalletType; balance: number };
+export type WalletInput = {
+  name: string;
+  type: WalletType;
+  balance: number;
+  /** Left out by first-run setup: new wallets are spending money. */
+  purpose?: WalletPurpose;
+  /** % a year, banks and e-wallets only; null for none. */
+  interestRate?: number | null;
+};
 export type WalletResult = { error?: string; archived?: boolean };
 
 const NAME_MAX = 60;
+
+// 42703: the purpose and interest columns from migration 0010 are missing.
+const NEEDS_MIGRATION = "Run step 10 in supabase/SQL_GUIDE.md first, then try again.";
 
 function cleanName(name: unknown) {
   return String(name ?? "").replace(/\s+/g, " ").trim();
@@ -21,7 +41,23 @@ function checkWallet(w: WalletInput): string | null {
   if (!Number.isFinite(w.balance) || Math.abs(w.balance) > MAX_AMOUNT) {
     return `Check the amount for ${name}.`;
   }
+  if (w.purpose !== undefined && !isWalletPurpose(w.purpose)) return `Pick a category for ${name}.`;
+  const rate = w.interestRate ?? null;
+  if (rate !== null) {
+    if (!canEarnInterest(w.type)) return "Only banks and e-wallets earn interest.";
+    if (!Number.isFinite(rate) || rate <= 0 || rate > 100) return `Check the interest rate for ${name}.`;
+  }
   return null;
+}
+
+/** The purpose and interest columns, only when the form sent them. */
+function extras(w: WalletInput) {
+  return {
+    ...(w.purpose !== undefined && { purpose: w.purpose }),
+    ...(w.interestRate !== undefined && {
+      interest_rate: w.interestRate === null ? null : Math.round(w.interestRate * 100) / 100,
+    }),
+  };
 }
 
 /** Adds wallets with what's in them right now (onboarding and Money). */
@@ -40,8 +76,11 @@ export async function addWallets(wallets: WalletInput[]): Promise<WalletResult> 
       name: cleanName(w.name),
       type: w.type,
       starting_balance: roundCents(w.balance),
+      ...extras(w),
+      ...(w.interestRate && { interest_since: today() }),
     })),
   );
+  if (error?.code === "42703") return { error: NEEDS_MIGRATION };
   if (error) return { error: "Couldn't save your wallets. Please try again." };
 
   refresh();
@@ -52,18 +91,17 @@ export async function addWallets(wallets: WalletInput[]): Promise<WalletResult> 
  * Renames a wallet and sets what's in it now. The starting balance is
  * adjusted so past transactions stay as they are.
  */
-export async function updateWallet(
-  id: string,
-  { name, type, balance }: WalletInput,
-): Promise<WalletResult> {
-  const problem = checkWallet({ name, type, balance });
+export async function updateWallet(id: string, input: WalletInput): Promise<WalletResult> {
+  const { name, type, balance } = input;
+  const problem = checkWallet(input);
   if (problem) return { error: problem };
 
   const supabase = await signedInClient();
   if (!supabase) return { error: SIGNED_OUT_ERROR };
 
   const [account, current] = await Promise.all([
-    supabase.from("accounts").select("starting_balance").eq("id", id).maybeSingle(),
+    // "*" so this still works before migration 0010 adds interest_rate.
+    supabase.from("accounts").select("*").eq("id", id).maybeSingle(),
     supabase.from("account_balances").select("balance").eq("account_id", id).maybeSingle(),
   ]);
   if (account.error || current.error || !account.data || !current.data) {
@@ -72,10 +110,18 @@ export async function updateWallet(
 
   const starting =
     Number(account.data.starting_balance) + (balance - Number(current.data.balance));
+  const row = extras(input);
+  // A new rate starts a new estimate; without one there's nothing to estimate.
+  if ("interest_rate" in row) {
+    const before = account.data.interest_rate == null ? null : Number(account.data.interest_rate);
+    if (row.interest_rate === null) Object.assign(row, { interest_since: null });
+    else if (row.interest_rate !== before) Object.assign(row, { interest_since: today() });
+  }
   const { error } = await supabase
     .from("accounts")
-    .update({ name: cleanName(name), type, starting_balance: roundCents(starting) })
+    .update({ name: cleanName(name), type, starting_balance: roundCents(starting), ...row })
     .eq("id", id);
+  if (error?.code === "42703") return { error: NEEDS_MIGRATION };
   if (error) return { error: "Couldn't save that wallet. Please try again." };
 
   refresh();

@@ -3,6 +3,7 @@
 import { refresh } from "next/cache";
 import { SIGNED_OUT_ERROR, signedInClient } from "@/lib/auth";
 import { isValidDate, today } from "@/lib/dates";
+import { monthlyDates } from "@/lib/forecast";
 import { loanSchedule } from "@/lib/installments";
 import { MAX_AMOUNT, isSpendable, roundCents, type AccountType } from "@/lib/money";
 import { pickWallet, savePlan } from "@/lib/server-writes";
@@ -95,6 +96,78 @@ export async function updateCreditLine(id: string, input: CreditLineInput): Prom
     })
     .eq("id", id);
   if (error) return FAILED;
+
+  refresh();
+  return {};
+}
+
+export type UpcomingInput = {
+  /** What it's for, like "Shopee order". */
+  name: string;
+  /** Each payment. */
+  amount: number;
+  firstDue: string;
+  /** 1 for a single bill; more repeats it monthly. */
+  months: number;
+  /** True when it isn't in "You owe on it now" yet: what you owe goes up by the total. */
+  addToOwed: boolean;
+};
+
+/**
+ * Payments you expect on SPayLater or Atome, like bills from before you
+ * used Pong or ones the provider's app already shows. Saved as a plan with
+ * no purchase behind it, so they're in Coming up, the forecast and Safe to
+ * spend, and Pay bill moves money to the credit line as usual.
+ */
+export async function addUpcomingPayments(accountId: string, input: UpcomingInput): Promise<CreditResult> {
+  const name = cleanName(input.name) || "Upcoming bill";
+  if (name.length > 60) return { error: "Keep the name to 60 characters." };
+  if (!validAmount(input.amount)) return { error: "Enter how much you'll pay." };
+  if (!Number.isInteger(input.months) || input.months < 1 || input.months > 24) return { error: "Pick how many months." };
+  if (!isValidDate(input.firstDue)) return { error: "Pick when it's due." };
+  const total = roundCents(input.amount * input.months);
+  if (total > MAX_AMOUNT) return { error: "That amount is too big." };
+
+  const supabase = await signedInClient();
+  if (!supabase) return { error: SIGNED_OUT_ERROR };
+  const { data: account } = await supabase
+    .from("accounts")
+    .select("id, starting_balance")
+    .eq("id", accountId)
+    .eq("type", "credit_line")
+    .maybeSingle();
+  if (!account) return { error: "Couldn't find that credit line." };
+
+  const amount = roundCents(input.amount);
+  const rows = monthlyDates(input.firstDue, input.months).map((dueOn, i) => ({
+    seq: i + 1,
+    dueOn,
+    amount,
+    principalPart: amount,
+    feePart: 0,
+  }));
+  const saved = await savePlan(supabase, {
+    kind: "bnpl",
+    accountId,
+    name,
+    principal: total,
+    months: input.months,
+    payFromAccountId: null,
+    sourceTxnId: null,
+    rows,
+  });
+  if (!saved) return FAILED;
+
+  if (input.addToOwed) {
+    const { error } = await supabase
+      .from("accounts")
+      .update({ starting_balance: roundCents(Number(account.starting_balance) - total) })
+      .eq("id", accountId);
+    if (error) {
+      await supabase.from("installment_plans").delete().eq("id", saved);
+      return FAILED;
+    }
+  }
 
   refresh();
   return {};

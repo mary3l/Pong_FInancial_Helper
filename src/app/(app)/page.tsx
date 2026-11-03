@@ -18,7 +18,7 @@ import {
   today as getToday,
 } from "@/lib/dates";
 import { itemLabel, project, safeToSpend, type ForecastItem, type SafeToSpend } from "@/lib/forecast";
-import { accountTypeLabel, formatPeso, isDebt, isSpendable, roundCents } from "@/lib/money";
+import { accountTypeLabel, formatPeso, isDebt, isSpendable, purposeLabel, roundCents } from "@/lib/money";
 import { dueDate, isOverdue } from "@/lib/people";
 
 // Design canvas 2.1: Safe to spend (with its breakdown), Coming up (bills and
@@ -75,7 +75,7 @@ async function Dashboard() {
   await connection();
   const today = getToday();
   const period = periodContaining(today);
-  const [{ accounts, inWallets, payday, items, people }, recent, budgets, spentThisKinsenas] = await Promise.all([
+  const [{ accounts, inWallets, setAside, payday, items, people }, recent, budgets, spentThisKinsenas] = await Promise.all([
     getPlanInputs(today, 30),
     getTransactions({ limit: 6 }),
     getBudgets(),
@@ -107,7 +107,7 @@ async function Dashboard() {
           </p>
         </div>
 
-        <SafeToSpendCard sts={sts} today={today} />
+        <SafeToSpendCard sts={sts} setAside={setAside} today={today} />
 
         {overdue.length > 0 && (
           <section aria-label="Overdue pautang" className="flex flex-col gap-1 rounded-[20px] bg-coral-tint px-4 py-3">
@@ -163,7 +163,10 @@ async function Dashboard() {
                 <div key={a.id} className="flex items-center justify-between gap-3 border-b border-line-soft py-2.5 last:border-0">
                   <span className="flex min-w-0 flex-col">
                     <span className="truncate font-bold">{a.name}</span>
-                    <span className="text-[13px] text-muted">{accountTypeLabel(a.type)}</span>
+                    <span className="text-[13px] text-muted">
+                      {accountTypeLabel(a.type)}
+                      {a.purpose !== "spending" && ` · ${purposeLabel(a.purpose)}`}
+                    </span>
                   </span>
                   <span className={`font-display text-[17px] font-semibold ${a.balance < 0 ? "text-coral-text" : ""}`}>
                     {formatPeso(a.balance)}
@@ -302,7 +305,7 @@ function DueRow({ item, accounts, today }: { item: ForecastItem; accounts: Accou
   );
 }
 
-function SafeToSpendCard({ sts, today }: { sts: SafeToSpend; today: string }) {
+function SafeToSpendCard({ sts, setAside, today }: { sts: SafeToSpend; setAside: number; today: string }) {
   const hasPayday = sts.perDay !== null && sts.nextPayday;
   return (
     <section className="relative flex flex-col gap-1.5 overflow-hidden rounded-[28px] bg-sea p-6 text-white lg:p-7">
@@ -325,7 +328,7 @@ function SafeToSpendCard({ sts, today }: { sts: SafeToSpend; today: string }) {
             <span className="hidden group-open:inline">Hide breakdown</span>
           </summary>
           <dl className="flex flex-col gap-1.5 rounded-[18px] bg-sea-dark px-4 py-3.5 text-[15px]">
-            <BreakdownLine label="In your wallets" value={formatPeso(sts.inWallets)} />
+            <BreakdownLine label="Spending money in your wallets" value={formatPeso(sts.inWallets)} />
             <BreakdownLine label={`− Due before payday (${sts.dueCount})`} value={formatPeso(sts.dueBeforePayday)} />
             <BreakdownLine
               label={`= Free until ${formatShortDay(sts.nextPayday!, today)}`}
@@ -340,7 +343,9 @@ function SafeToSpendCard({ sts, today }: { sts: SafeToSpend; today: string }) {
             />
           </dl>
           <p className="pt-2 text-[13px] leading-snug text-sea-text">
-            Only cash, bank and e-wallets count. Pautang, credit limits and loans never do,
+            Only spending money in cash, bank and e-wallets counts
+            {setAside > 0 && <> (your {formatPeso(setAside)} in savings, emergency fund and investments doesn&apos;t)</>}.
+            Pautang, credit limits and loans never do,
             and neither does income you haven&apos;t received yet. A bill stops counting once
             you mark it paid.
           </p>

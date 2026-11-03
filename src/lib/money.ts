@@ -25,6 +25,55 @@ export function accountTypeLabel(type: AccountType): string {
   );
 }
 
+/**
+ * What a wallet's money is for, in cashflow terms. Only spending money
+ * counts in Safe to spend and the forecast; the rest is still yours (You
+ * have, Net worth) but set aside.
+ */
+export const WALLET_PURPOSES = [
+  { value: "spending", label: "Spending" },
+  { value: "savings", label: "Savings" },
+  { value: "emergency", label: "Emergency fund" },
+  { value: "investment", label: "Investments" },
+] as const;
+
+export type WalletPurpose = (typeof WALLET_PURPOSES)[number]["value"];
+
+export function isWalletPurpose(value: unknown): value is WalletPurpose {
+  return WALLET_PURPOSES.some((p) => p.value === value);
+}
+
+export function purposeLabel(purpose: WalletPurpose): string {
+  return WALLET_PURPOSES.find((p) => p.value === purpose)?.label ?? "Spending";
+}
+
+/** Cash, bank and e-wallet money that's meant for spending: what Safe to spend works from. */
+export function countsAsSpending(account: { type: AccountType; purpose: WalletPurpose }): boolean {
+  return isSpendable(account.type) && account.purpose === "spending";
+}
+
+/** Digital banks (MariBank, GoTyme) and e-wallet savings (Maya, GSave) pay interest daily. */
+export function canEarnInterest(type: AccountType): boolean {
+  return type === "bank" || type === "ewallet";
+}
+
+/** Interest on Philippine deposits has a 20% final withholding tax. */
+export const INTEREST_TAX = 0.2;
+
+/**
+ * Interest credited for one day on `balance` at `ratePerYear` % a year,
+ * after tax. Not rounded: banks round the day's total, so callers round.
+ */
+export function dailyInterest(balance: number, ratePerYear: number): number {
+  if (balance <= 0 || ratePerYear <= 0) return 0;
+  return ((balance * ratePerYear) / 100 / 365) * (1 - INTEREST_TAX);
+}
+
+/** Interest after tax over `days` days on a steady balance. */
+export function interestFor(balance: number, ratePerYear: number, days: number): number {
+  return roundCents(dailyInterest(balance, ratePerYear) * Math.max(0, days));
+}
+
 /** Credit lines (SPayLater, Atome) and loans (SLoan, MariLoan): money you owe. */
 export function isDebt(type: AccountType): boolean {
   return type === "credit_line" || type === "loan";

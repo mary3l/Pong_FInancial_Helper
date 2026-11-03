@@ -32,6 +32,8 @@ export const INCOME_CATEGORIES: Category[] = [
   { key: "side_income", label: "Side income", tint: "bg-sun-tint", icon: "M8 21V3h5a5 5 0 0 1 0 10H8M5 7h14M5 10h14" },
   { key: "gift", label: "Gift", tint: "bg-coral-tint", icon: "M3 8h18v4H3zM5 12v9h14v-9M12 8v13M12 8S10 3 7.5 4.5 9 8 12 8zM12 8s2-5 4.5-3.5S15 8 12 8z" },
   { key: "refund", label: "Refund", tint: "bg-sky-tint", icon: "M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5" },
+  // Daily interest from MariBank, GoTyme and other digital banks.
+  { key: "interest", label: "Interest", tint: "bg-mint", icon: "M12 21v-9M12 12C12 8 9 5 4 5c0 4 3 7 8 7zM12 12c0-3 2.5-6 8-6 0 3.5-2.5 6-8 6z" },
   { key: "other_income", label: "Other", tint: "bg-line-soft", icon: "M5 12h.01M12 12h.01M19 12h.01" },
 ];
 

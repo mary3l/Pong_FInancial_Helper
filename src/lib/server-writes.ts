@@ -23,7 +23,7 @@ export async function pickWallet(supabase: Client, preferred: string | null): Pr
   return wallets.find((a) => a.id === preferred)?.id ?? wallets[0]?.id ?? null;
 }
 
-/** Saves an installment plan and its payments. False if anything failed (nothing is left behind). */
+/** Saves an installment plan and its payments. Its id, or null if anything failed (nothing is left behind). */
 export async function savePlan(
   supabase: Client,
   plan: {
@@ -36,7 +36,7 @@ export async function savePlan(
     sourceTxnId: string | null;
     rows: PaymentRow[];
   },
-): Promise<boolean> {
+): Promise<string | null> {
   const { data, error } = await supabase
     .from("installment_plans")
     .insert({
@@ -52,7 +52,7 @@ export async function savePlan(
     })
     .select("id")
     .single();
-  if (error) return false;
+  if (error) return null;
 
   const payments = await supabase.from("scheduled_payments").insert(
     plan.rows.map((r) => ({
@@ -66,7 +66,7 @@ export async function savePlan(
   );
   if (payments.error) {
     await supabase.from("installment_plans").delete().eq("id", data.id);
-    return false;
+    return null;
   }
-  return true;
+  return data.id;
 }

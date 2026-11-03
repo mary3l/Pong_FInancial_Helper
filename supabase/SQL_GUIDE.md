@@ -223,6 +223,29 @@ select to_regclass('public.widget_keys') is not null
 
 Expect `true`.
 
+## Step 10 · Wallet categories and daily interest
+
+File: `migrations/0010_wallet_categories_interest.sql`
+
+Powers the **Category** (Spending, Savings, Emergency fund, Investments) and **Interest rate**
+fields when you edit a wallet in Money, and **+ Add interest** for MariBank and GoTyme.
+
+- `accounts.purpose`: what the wallet's money is for. Every wallet you have starts as
+  Spending, so Safe to spend doesn't change until you pick another category.
+- `accounts.interest_rate` and `interest_since`: the yearly rate and the day it was set.
+
+Until you run this, the app still works and treats every wallet as Spending; saving a
+category or rate asks you to run this step.
+
+**Check**
+
+```sql
+select count(*) from information_schema.columns
+where table_name = 'accounts' and column_name in ('purpose', 'interest_rate', 'interest_since');
+```
+
+Expect `3`.
+
 ---
 
 ## All done?
@@ -241,7 +264,9 @@ select
   to_regclass('public.grocery_items') is not null           as step_7,
   exists (select 1 from pg_constraint
           where conname = 'accounts_credit_limit_type_check') as step_8,
-  to_regclass('public.widget_keys') is not null             as step_9;
+  to_regclass('public.widget_keys') is not null             as step_9,
+  exists (select 1 from information_schema.columns
+          where table_name = 'accounts' and column_name = 'purpose') as step_10;
 ```
 
 The first `false` is the step to run next.

@@ -2,12 +2,20 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { ChevronIcon } from "@/components/icons";
-import { getAccounts, getInstallmentPlans, getPeople, getRecurringItems, type Account, type InstallmentPlan } from "@/lib/data";
-import { formatShortDay, today as getToday } from "@/lib/dates";
-import { formatPeso, isDebt, isSpendable, roundCents } from "@/lib/money";
+import {
+  getAccounts,
+  getInstallmentPlans,
+  getLastInterest,
+  getPeople,
+  getRecurringItems,
+  type Account,
+  type InstallmentPlan,
+} from "@/lib/data";
+import { daysBetween, formatShortDay, today as getToday } from "@/lib/dates";
+import { dailyInterest, formatPeso, interestFor, isDebt, isSpendable, roundCents } from "@/lib/money";
 import { dueDate, isOverdue, type Person } from "@/lib/people";
 import { MoneyTabs } from "./money-tabs";
-import { WalletManager } from "./wallet-manager";
+import { WalletManager, type Accrued } from "./wallet-manager";
 
 export const metadata = { title: "Money · Pong Money" };
 
@@ -30,15 +38,37 @@ async function Wallets() {
   // Read the clock only at request time (Cache Components).
   await connection();
   const today = getToday();
-  const [accounts, plans, recurring, people] = await Promise.all([
+  const [accounts, plans, recurring, people, lastInterest] = await Promise.all([
     getAccounts({ includeArchived: true }),
     getInstallmentPlans(),
     getRecurringItems(),
     getPeople(),
+    getLastInterest(),
   ]);
   const active = accounts.filter((a) => !a.archived);
   const wallets = active.filter((a) => isSpendable(a.type));
   const debts = active.filter((a) => isDebt(a.type));
+  const debtGroups = [
+    { key: "bnpl", label: "Buy now, pay later", accounts: debts.filter((a) => a.type === "credit_line") },
+    { key: "loan", label: "Loans", accounts: debts.filter((a) => a.type === "loan") },
+  ].filter((g) => g.accounts.length > 0);
+
+  // MariBank, GoTyme: interest built up since it was last logged, or since the rate was set.
+  const accrued: Record<string, Accrued> = {};
+  for (const a of wallets) {
+    if (!a.interestRate) continue;
+    const since = [a.interestSince ?? today, lastInterest.get(a.id) ?? ""].sort().at(-1)!;
+    const days = Math.max(0, daysBetween(since, today));
+    accrued[a.id] = {
+      since,
+      days,
+      amount: interestFor(a.balance, a.interestRate, days),
+      perDay: roundCents(dailyInterest(a.balance, a.interestRate)),
+    };
+  }
+  const interestPerMonth = roundCents(
+    wallets.reduce((sum, a) => sum + (a.interestRate ? dailyInterest(a.balance, a.interestRate) * 30 : 0), 0),
+  );
   const have = roundCents(wallets.reduce((sum, a) => sum + a.balance, 0));
   // Pautang is still your money; utang is money you owe.
   const owedToYou = roundCents(people.reduce((sum, p) => sum + Math.max(0, p.balance), 0));
@@ -74,8 +104,15 @@ async function Wallets() {
         </dl>
 
         <section aria-labelledby="have-heading" className="flex flex-col gap-2">
-          <h2 id="have-heading" className="text-[13px] font-extrabold text-muted">MONEY YOU HAVE</h2>
-          <WalletManager accounts={accounts.filter((a) => isSpendable(a.type) || a.archived)} />
+          <h2 id="have-heading" className="text-[13px] font-extrabold text-muted">
+            MONEY YOU HAVE
+            {interestPerMonth > 0 && ` · earning ≈ ${formatPeso(interestPerMonth)}/mo in interest`}
+          </h2>
+          <WalletManager
+            accounts={accounts.filter((a) => isSpendable(a.type) || a.archived)}
+            accrued={accrued}
+            today={today}
+          />
         </section>
 
         <section aria-labelledby="owe-heading" className="flex flex-col gap-2">
@@ -89,22 +126,39 @@ async function Wallets() {
               </>
             )}
           </h2>
-          {debts.length > 0 && (
-            <ul className="flex flex-col rounded-[20px] bg-white px-4 py-1.5">
-              {debts.map((a) => (
-                <li key={a.id} className="border-b border-line-soft last:border-0">
-                  <Link href={`/money/${a.id}`} className="flex min-h-14 items-center gap-3 py-2.5 text-ink">
-                    <span className="flex min-w-0 flex-1 flex-col">
-                      <span className="truncate font-bold">{a.name}</span>
-                      <span className="text-[13px] text-muted">{debtDetail(a, plans, today)}</span>
-                    </span>
-                    <span className="font-display text-[17px] font-semibold">{formatPeso(Math.max(0, -a.balance))}</span>
-                    <ChevronIcon size={20} className="text-muted" />
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
+          {debtGroups.map((group) => (
+            <section key={group.key} aria-label={group.label} className="flex flex-col gap-1.5">
+              {debtGroups.length > 1 && (
+                <h3 className="px-1 font-extrabold">
+                  {group.label} · {formatPeso(roundCents(group.accounts.reduce((sum, a) => sum + Math.max(0, -a.balance), 0)))}
+                </h3>
+              )}
+              <ul className="flex flex-col rounded-[20px] bg-white px-4 py-1.5">
+                {group.accounts.map((a) => (
+                  <li key={a.id} className="flex items-center gap-1 border-b border-line-soft last:border-0">
+                    <Link href={`/money/${a.id}`} className="flex min-h-14 min-w-0 flex-1 items-center gap-3 py-2.5 text-ink">
+                      <span className="flex min-w-0 flex-1 flex-col">
+                        <span className="truncate font-bold">{a.name}</span>
+                        <span className="text-[13px] text-muted">{debtDetail(a, plans, today)}</span>
+                      </span>
+                      <span className="font-display text-[17px] font-semibold">{formatPeso(Math.max(0, -a.balance))}</span>
+                      <ChevronIcon size={20} className="text-muted" />
+                    </Link>
+                    {a.type === "credit_line" && (
+                      <Link
+                        href={`/money/${a.id}?add=upcoming`}
+                        aria-label={`Add an upcoming payment to ${a.name}`}
+                        title="Add an upcoming payment"
+                        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-sun font-display text-2xl font-semibold text-ink"
+                      >
+                        +
+                      </Link>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
           <div className="grid gap-2 sm:grid-cols-2">
             <Link
               href="/money/credit/new"
@@ -175,10 +229,19 @@ function debtDetail(account: Account, plans: InstallmentPlan[], today: string): 
     .sort((a, b) => a.dueOn.localeCompare(b.dueOn))[0];
   if (account.type === "credit_line") {
     const used = Math.max(0, -account.balance);
+    // Everything due on the next bill date, so a new purchase adds to that bill.
+    const bill = next
+      ? roundCents(
+          mine
+            .flatMap((p) => p.payments)
+            .filter((p) => !p.transactionId && p.dueOn === next.dueOn)
+            .reduce((sum, p) => sum + p.amount, 0),
+        )
+      : 0;
     return [
       "BNPL",
       account.creditLimit ? `${formatPeso(used)} of ${formatPeso(account.creditLimit)} used` : null,
-      next ? `due ${formatShortDay(next.dueOn, today)}` : null,
+      next ? `${formatPeso(bill)} due ${formatShortDay(next.dueOn, today)}` : null,
     ]
       .filter(Boolean)
       .join(" · ");

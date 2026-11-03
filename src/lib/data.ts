@@ -3,7 +3,15 @@ import { connection } from "next/server";
 import { addDays } from "@/lib/dates";
 import { scheduledItems, sortItems, type ForecastItem, type ScheduleInputs } from "@/lib/forecast";
 import type { PriceMemory } from "@/lib/grocery";
-import { isSpendable, roundCents, type AccountType, type TransactionType } from "@/lib/money";
+import {
+  countsAsSpending,
+  isSpendable,
+  isWalletPurpose,
+  roundCents,
+  type AccountType,
+  type TransactionType,
+  type WalletPurpose,
+} from "@/lib/money";
 import { personItems, type EntryKind, type Person } from "@/lib/people";
 import type { Frequency } from "@/lib/schedule";
 import { createClient } from "@/lib/supabase/server";
@@ -23,6 +31,12 @@ export type Account = {
   /** Credit lines: the day of the month the bill is due. */
   dueDay: number | null;
   archived: boolean;
+  /** Cash, bank and e-wallets: what the money is for. Only "spending" counts in Safe to spend. */
+  purpose: WalletPurpose;
+  /** Banks and e-wallets that pay daily interest: % a year. */
+  interestRate: number | null;
+  /** When the current rate was set: interest estimates start here. */
+  interestSince: string | null;
 };
 
 export type Transaction = {
@@ -120,24 +134,27 @@ async function db() {
  */
 export async function getAccounts({ includeArchived = false, includePeople = false } = {}): Promise<Account[]> {
   const supabase = await db();
-  let query = supabase
-    .from("accounts")
-    .select("id, name, type, starting_balance, credit_limit, due_day, archived")
-    .order("created_at");
-  if (!includeArchived) query = query.eq("archived", false);
-  if (!includePeople) query = query.neq("type", "person");
+  const select = (columns: string) => {
+    let query = supabase.from("accounts").select(columns).order("created_at");
+    if (!includeArchived) query = query.eq("archived", false);
+    if (!includePeople) query = query.neq("type", "person");
+    return query;
+  };
+  const base = "id, name, type, starting_balance, credit_limit, due_day, archived";
 
-  const [accounts, balances] = await Promise.all([
-    query,
+  const [first, balances] = await Promise.all([
+    select(`${base}, purpose, interest_rate, interest_since`),
     supabase.from("account_balances").select("account_id, balance"),
   ]);
+  // 42703: migration 0010 hasn't been run yet. Every wallet is spending money then.
+  const accounts = first.error?.code === "42703" ? await select(base) : first;
   if (accounts.error) throw dbError(accounts.error);
   if (balances.error) throw dbError(balances.error);
 
   const balanceById = new Map(
     balances.data.map((b) => [b.account_id as string, Number(b.balance)]),
   );
-  return accounts.data.map((a) => ({
+  return (accounts.data as unknown as AccountRow[]).map((a) => ({
     id: a.id,
     name: a.name,
     type: a.type as AccountType,
@@ -146,7 +163,39 @@ export async function getAccounts({ includeArchived = false, includePeople = fal
     creditLimit: a.credit_limit === null ? null : Number(a.credit_limit),
     dueDay: a.due_day,
     archived: a.archived,
+    purpose: isWalletPurpose(a.purpose) ? a.purpose : "spending",
+    interestRate: a.interest_rate == null ? null : Number(a.interest_rate),
+    interestSince: a.interest_since ?? null,
   }));
+}
+
+type AccountRow = {
+  id: string;
+  name: string;
+  type: string;
+  starting_balance: number | string;
+  credit_limit: number | string | null;
+  due_day: number | null;
+  archived: boolean;
+  purpose?: string;
+  interest_rate?: number | string | null;
+  interest_since?: string | null;
+};
+
+/** The last day interest was logged on each wallet, by account id. */
+export async function getLastInterest(): Promise<Map<string, string>> {
+  const supabase = await db();
+  const { data, error } = await supabase
+    .from("transactions")
+    .select("account_id, occurred_on")
+    .eq("type", "income")
+    .eq("category", "interest")
+    .order("occurred_on", { ascending: false })
+    .limit(500);
+  if (error) throw dbError(error);
+  const last = new Map<string, string>();
+  for (const row of data) if (!last.has(row.account_id)) last.set(row.account_id, row.occurred_on);
+  return last;
 }
 
 export async function getRecurringItems(): Promise<RecurringItem[]> {
@@ -357,8 +406,10 @@ export async function getPriceMemory(): Promise<{ memory: PriceMemory; stores: s
 
 export type PlanInputs = {
   accounts: Account[];
-  /** Money in cash, bank and e-wallets right now. */
+  /** Spending money in cash, bank and e-wallets right now. */
   inWallets: number;
+  /** Savings, emergency fund and investments: yours, but not counted. */
+  setAside: number;
   payday: RecurringItem | null;
   /** Everyone with utang or pautang. */
   people: Person[];
@@ -381,7 +432,12 @@ export async function getPlanInputs(today: string, days: number): Promise<PlanIn
   return {
     accounts,
     inWallets: roundCents(
-      accounts.filter((a) => isSpendable(a.type)).reduce((sum, a) => sum + a.balance, 0),
+      accounts.filter((a) => countsAsSpending(a)).reduce((sum, a) => sum + a.balance, 0),
+    ),
+    setAside: roundCents(
+      accounts
+        .filter((a) => isSpendable(a.type) && !countsAsSpending(a))
+        .reduce((sum, a) => sum + a.balance, 0),
     ),
     payday: recurring.find((r) => r.kind === "payday") ?? null,
     people,

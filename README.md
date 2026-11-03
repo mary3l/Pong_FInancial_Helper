@@ -60,6 +60,20 @@ wallet to the credit line, plus an expense for the fee. Loans (SLoan, MariLoan):
 received is a transfer from the loan account, never income; each amortization is a transfer
 for the principal plus an expense for the interest. `src/lib/installments.ts` has the math.
 
+Upcoming payments on SPayLater or Atome (the **+** on a credit line): bills you already expect,
+like ones from before you used Pong. They're a payment plan with no purchase behind it, so they
+count in Coming up, the forecast and Safe to spend. They only raise what you owe if you tick
+"Add it to what I owe" (for a purchase you haven't logged).
+
+Wallet categories: each cash, bank or e-wallet is Spending, Savings, Emergency fund or
+Investments. All of it counts in You have and Net worth; only Spending counts in Safe to spend
+and the forecast. Moving money into savings is a transfer, so it's never spending.
+
+Daily interest (MariBank, GoTyme, Maya Savings): save the rate (% a year) on the wallet and
+Money estimates what it earns a day after the 20% final tax, and what's built up since you last
+logged interest. **+ Add interest** logs it as income (category Interest), so the balance keeps
+up with the bank's. Pong never adds interest by itself.
+
 Utang & pautang: each person is an account of type `person` whose balance is what they owe
 you (or, below 0, what you owe them). Lending is a transfer to them, borrowing a transfer
 from them, and being paid back a transfer again, so none of it is spending or income. In a
@@ -68,7 +82,7 @@ share is an expense from their account (utang). Forgiving turns what's left into
 Safe to spend and the forecast never count pautang unless you switch on "Count it in my
 forecast", and never once it's late.
 
-Safe to spend = money in cash, bank and e-wallets, minus unpaid bills and expenses due
+Safe to spend = spending money in cash, bank and e-wallets, minus unpaid bills and expenses due
 before the next payday, divided by the days until payday. Income you haven't received yet
 never counts. Coming up on Home lists the next 7 days: **Mark paid** logs the real expense
 and **Add income** logs the real income, so the item stops counting and the wallet balance
