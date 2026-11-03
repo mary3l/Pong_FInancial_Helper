@@ -6,10 +6,12 @@ import {
   countsAsSpending,
   dailyInterest,
   formatPeso,
+  interestEstimate,
   interestFor,
   isDebt,
   isSpendable,
   parseAmount,
+  suggestedPayout,
 } from "@/lib/money";
 
 const txn = (type: "expense" | "income" | "transfer", amount: number, accountId: string, toAccountId: string | null = null) => ({
@@ -138,5 +140,63 @@ describe("daily interest (MariBank, GoTyme)", () => {
     expect(canEarnInterest("bank") && canEarnInterest("ewallet")).toBe(true);
     expect(canEarnInterest("cash")).toBe(false);
     expect(canEarnInterest("credit_line")).toBe(false);
+  });
+});
+
+describe("monthly interest (GoTyme Go Save)", () => {
+  // ₱100,000 at 3.65% a year: ₱8 a day after tax.
+  const goTyme = { balance: 100_000, interestRate: 3.65, interestSince: "2026-10-15", interestPayout: "monthly" as const };
+
+  it("splits what was credited on the 1st from what's building up", () => {
+    expect(interestEstimate(goTyme, null, "2026-11-03")).toEqual({
+      perDay: 8,
+      since: "2026-11-01",
+      days: 2,
+      amount: 16,
+      // Oct 15 to Oct 31: 17 days.
+      credited: { on: "2026-11-01", from: "2026-10-15", amount: 136 },
+      nextPayout: "2026-12-01",
+    });
+  });
+
+  it("has nothing to log once the 1st's interest is logged", () => {
+    const estimate = interestEstimate(goTyme, "2026-11-01", "2026-11-20");
+    expect(estimate.credited).toBeNull();
+    expect(estimate).toMatchObject({ since: "2026-11-01", days: 19, amount: 152 });
+  });
+
+  it("has nothing credited when the rate was set this month", () => {
+    const estimate = interestEstimate({ ...goTyme, interestSince: "2026-11-01" }, null, "2026-11-01");
+    expect(estimate).toMatchObject({ credited: null, days: 0, amount: 0, nextPayout: "2026-12-01" });
+  });
+
+  it("rolls the next payout over to January", () => {
+    expect(interestEstimate(goTyme, "2026-12-01", "2026-12-10").nextPayout).toBe("2027-01-01");
+  });
+
+  it("covers every month missed in one credit", () => {
+    expect(interestEstimate(goTyme, null, "2026-12-05").credited).toEqual({
+      on: "2026-12-01",
+      from: "2026-10-15",
+      amount: 376, // 17 days in October + 30 in November
+    });
+  });
+
+  it("leaves daily wallets (MariBank) as they were", () => {
+    const mari = { ...goTyme, interestPayout: "daily" as const };
+    expect(interestEstimate(mari, "2026-10-31", "2026-11-03")).toEqual({
+      perDay: 8,
+      since: "2026-10-31",
+      days: 3,
+      amount: 24,
+      credited: null,
+      nextPayout: null,
+    });
+  });
+
+  it("starts a new GoTyme wallet as monthly", () => {
+    expect(suggestedPayout("GoTyme Go Save")).toBe("monthly");
+    expect(suggestedPayout("go tyme")).toBe("monthly");
+    expect(suggestedPayout("MariBank")).toBe("daily");
   });
 });

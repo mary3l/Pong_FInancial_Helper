@@ -77,6 +77,12 @@ Money estimates what it earns a day after the 20% final tax, and what's built up
 logged interest. **+ Add interest** logs it as income (category Interest), so the balance keeps
 up with the bank's. Pong never adds interest by itself.
 
+GoTyme Go Save works interest out daily but adds the month's interest on the 1st, so a wallet
+can be set to **Interest is added: On the 1st of the month** (a new wallet named GoTyme starts
+that way; needs step 11 in `supabase/SQL_GUIDE.md`). Money then shows what's building up until
+the next 1st, and after a 1st, what the bank added that isn't logged yet. **+ Add interest**
+logs it dated the 1st. `interestEstimate` in `src/lib/money.ts` has the math.
+
 Utang & pautang: each person is an account of type `person` whose balance is what they owe
 you (or, below 0, what you owe them). Lending is a transfer to them, borrowing a transfer
 from them, and being paid back a transfer again, so none of it is spending or income. In a

@@ -11,11 +11,19 @@ import {
   type Account,
   type InstallmentPlan,
 } from "@/lib/data";
-import { daysBetween, formatShortDay, today as getToday } from "@/lib/dates";
-import { dailyInterest, formatPeso, interestFor, isDebt, isSpendable, roundCents } from "@/lib/money";
+import { formatShortDay, today as getToday } from "@/lib/dates";
+import {
+  dailyInterest,
+  formatPeso,
+  interestEstimate,
+  isDebt,
+  isSpendable,
+  roundCents,
+  type InterestEstimate,
+} from "@/lib/money";
 import { dueDate, isOverdue, type Person } from "@/lib/people";
 import { MoneyTabs } from "./money-tabs";
-import { WalletManager, type Accrued } from "./wallet-manager";
+import { WalletManager } from "./wallet-manager";
 
 export const metadata = { title: "Money · Pong Money" };
 
@@ -53,18 +61,12 @@ async function Wallets() {
     { key: "loan", label: "Loans", accounts: debts.filter((a) => a.type === "loan") },
   ].filter((g) => g.accounts.length > 0);
 
-  // MariBank, GoTyme: interest built up since it was last logged, or since the rate was set.
-  const accrued: Record<string, Accrued> = {};
+  // MariBank: interest built up since it was last logged, or since the rate was set.
+  // GoTyme: also what it credited on the 1st that isn't logged yet.
+  const accrued: Record<string, InterestEstimate> = {};
   for (const a of wallets) {
     if (!a.interestRate) continue;
-    const since = [a.interestSince ?? today, lastInterest.get(a.id) ?? ""].sort().at(-1)!;
-    const days = Math.max(0, daysBetween(since, today));
-    accrued[a.id] = {
-      since,
-      days,
-      amount: interestFor(a.balance, a.interestRate, days),
-      perDay: roundCents(dailyInterest(a.balance, a.interestRate)),
-    };
+    accrued[a.id] = interestEstimate({ ...a, interestRate: a.interestRate }, lastInterest.get(a.id) ?? null, today);
   }
   const interestPerMonth = roundCents(
     wallets.reduce((sum, a) => sum + (a.interestRate ? dailyInterest(a.balance, a.interestRate) * 30 : 0), 0),

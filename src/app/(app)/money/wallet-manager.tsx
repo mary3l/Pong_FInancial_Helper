@@ -11,8 +11,9 @@ import {
 } from "@/app/wallet-actions";
 import { FIELD_CLASS } from "@/components/choice-chip";
 import type { Account } from "@/lib/data";
-import { formatShortDay } from "@/lib/dates";
+import { daysBetween, formatShortDay } from "@/lib/dates";
 import {
+  INTEREST_PAYOUTS,
   WALLET_PURPOSES,
   WALLET_TYPES,
   accountTypeLabel,
@@ -21,12 +22,12 @@ import {
   isWalletType,
   parseAmount,
   roundCents,
+  suggestedPayout,
+  type InterestEstimate,
+  type InterestPayout,
   type WalletPurpose,
   type WalletType,
 } from "@/lib/money";
-
-/** Interest built up on a wallet since it was last logged (or the rate was set). */
-export type Accrued = { since: string; days: number; amount: number; perDay: number };
 
 export function WalletManager({
   accounts,
@@ -35,7 +36,7 @@ export function WalletManager({
 }: {
   accounts: Account[];
   /** By account id, for wallets with an interest rate. */
-  accrued: Record<string, Accrued>;
+  accrued: Record<string, InterestEstimate>;
   today: string;
 }) {
   const [editing, setEditing] = useState<string | null>(null);
@@ -85,6 +86,7 @@ export function WalletManager({
                         <span className="text-[13px] text-muted">
                           {accountTypeLabel(a.type)}
                           {a.interestRate !== null && ` · ${a.interestRate}% a year`}
+                          {a.interestRate !== null && a.interestPayout === "monthly" && ", paid on the 1st"}
                         </span>
                       </span>
                       <span className={`font-display text-[17px] font-semibold ${a.balance < 0 ? "text-coral-text" : ""}`}>
@@ -174,6 +176,9 @@ function WalletForm({
   const [balance, setBalance] = useState(account ? String(account.balance) : "");
   const [purpose, setPurpose] = useState<WalletPurpose>(account?.purpose ?? "spending");
   const [rate, setRate] = useState(account?.interestRate ? String(account.interestRate) : "");
+  // A new wallet follows its name (GoTyme pays monthly) until you pick one.
+  const [pickedPayout, setPayout] = useState<InterestPayout | null>(account?.interestPayout ?? null);
+  const payout = pickedPayout ?? suggestedPayout(name);
   const [error, setError] = useState<string | null>(null);
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [pending, startTransition] = useTransition();
@@ -194,7 +199,14 @@ function WalletForm({
       return;
     }
     startTransition(async () => {
-      const input = { name, type, balance: value, purpose, interestRate };
+      const input = {
+        name,
+        type,
+        balance: value,
+        purpose,
+        interestRate,
+        ...(interestRate !== null && { interestPayout: payout }),
+      };
       const result = account ? await updateWallet(account.id, input) : await addWallets([input]);
       if (result.error) setError(result.error);
       else onDone(result);
@@ -281,9 +293,32 @@ function WalletForm({
             <span aria-hidden="true" className="absolute top-1/2 right-4 -translate-y-1/2 font-bold text-muted">% a year</span>
           </div>
           <span id={`wallet-rate-hint-${id}`} className="text-xs text-muted">
-            For banks that add interest every day, like MariBank and GoTyme. Check the rate in
-            their app; Pong estimates what you earn after the 20% tax.
+            For banks that pay interest, like MariBank and GoTyme. Check the rate in their app;
+            Pong estimates what you earn after the 20% tax.
           </span>
+          {rate.trim() && (
+            <div className="mt-2 flex flex-col gap-1.5">
+              <span id={`wallet-payout-${id}`} className="text-sm font-bold">Interest is added</span>
+              <div role="group" aria-labelledby={`wallet-payout-${id}`} className="flex flex-wrap gap-2">
+                {INTEREST_PAYOUTS.map((p) => (
+                  <button
+                    key={p.value}
+                    type="button"
+                    aria-pressed={payout === p.value}
+                    onClick={() => setPayout(p.value)}
+                    className={`h-9 rounded-full px-3.5 text-sm font-extrabold ${payout === p.value ? "bg-ink text-white" : "bg-mint text-ink"}`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+              <span className="text-xs text-muted">
+                {payout === "monthly"
+                  ? "Like GoTyme Go Save: worked out daily, added to your balance on the 1st."
+                  : "Like MariBank: added to your balance every day."}
+              </span>
+            </div>
+          )}
         </div>
       )}
       {account && (
@@ -313,15 +348,19 @@ function WalletForm({
 }
 
 /**
- * Daily interest on a MariBank or GoTyme style wallet: what it earns a day
- * and what's built up since interest was last logged. Add interest logs it
- * as income, so the balance here keeps up with the bank's.
+ * Interest on a MariBank or GoTyme wallet: what it earns a day and what's
+ * built up. MariBank adds it daily, so all of that is in the bank's balance;
+ * GoTyme adds the month's interest on the 1st. Add interest logs what was
+ * credited as income, so the balance here keeps up with the bank's.
  */
-function InterestRow({ account, accrued, today }: { account: Account; accrued: Accrued; today: string }) {
+function InterestRow({ account, accrued, today }: { account: Account; accrued: InterestEstimate; today: string }) {
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const monthly = accrued.nextPayout !== null;
+  // Daily: everything so far, dated today. Monthly: only what was credited on the 1st.
+  const toLog = monthly ? accrued.credited : { on: today, amount: accrued.amount };
 
   function save(e: React.FormEvent) {
     e.preventDefault();
@@ -338,7 +377,7 @@ function InterestRow({ account, accrued, today }: { account: Account; accrued: A
         toAccountId: null,
         category: "interest",
         note: "Interest",
-        occurredOn: today,
+        occurredOn: toLog?.on ?? today,
       });
       if (result.error) setError(result.error);
       else setOpen(false);
@@ -348,18 +387,31 @@ function InterestRow({ account, accrued, today }: { account: Account; accrued: A
   return (
     <div className="mt-1.5 flex flex-col gap-2 rounded-[14px] bg-mint px-3 py-2">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <span className="flex-1 text-[13px]">
-          Earns ≈ <strong>{formatPeso(accrued.perDay)}</strong> a day after tax
-          {accrued.days > 0
-            ? ` · ≈ ${formatPeso(accrued.amount)} since ${formatShortDay(accrued.since, today)}`
-            : " · counting from today"}
+        <span className="flex flex-1 flex-col text-[13px]">
+          <span>
+            Earns ≈ <strong>{formatPeso(accrued.perDay)}</strong> a day after tax
+            {monthly
+              ? ` · ≈ ${formatPeso(accrued.amount)} so far, added ${formatShortDay(accrued.nextPayout!, today)}`
+              : accrued.days > 0
+                ? ` · ≈ ${formatPeso(accrued.amount)} since ${formatShortDay(accrued.since, today)}`
+                : " · counting from today"}
+          </span>
+          {accrued.credited && (
+            <span className="font-bold">
+              ≈ {formatPeso(accrued.credited.amount)} was added on {formatShortDay(accrued.credited.on, today)}
+              {/* More than a month not logged: say where it starts. */}
+              {daysBetween(accrued.credited.from, accrued.credited.on) > 31 &&
+                ` (since ${formatShortDay(accrued.credited.from, today)})`}
+              . Log it so your balance matches.
+            </span>
+          )}
         </span>
-        {!open && (
+        {!open && toLog && (
           <button
             type="button"
             onClick={() => {
               setOpen(true);
-              setAmount(accrued.amount > 0 ? String(accrued.amount) : "");
+              setAmount(toLog.amount > 0 ? String(toLog.amount) : "");
               setError(null);
             }}
             className="h-9 rounded-full bg-white px-3 text-sm font-extrabold text-sea-dark"
@@ -373,6 +425,7 @@ function InterestRow({ account, accrued, today }: { account: Account; accrued: A
           <div className="flex flex-col gap-1">
             <label htmlFor={`interest-${account.id}`} className="text-xs font-bold">
               Interest credited to {account.name}
+              {monthly && toLog && ` on ${formatShortDay(toLog.on, today)}`}
             </label>
             <div className="relative w-36">
               <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">₱</span>
@@ -393,8 +446,17 @@ function InterestRow({ account, accrued, today }: { account: Account; accrued: A
             Cancel
           </button>
           <p className="basis-full text-xs text-muted">
-            Filled in with Pong&apos;s estimate. The bank adds interest daily on that day&apos;s
-            balance, so type the exact amount from its app if you have it.
+            {monthly ? (
+              <>
+                Filled in with Pong&apos;s estimate on today&apos;s balance. The bank adds the month&apos;s
+                interest on the 1st, after tax, so type the exact amount from its app if you have it.
+              </>
+            ) : (
+              <>
+                Filled in with Pong&apos;s estimate. The bank adds interest daily on that day&apos;s
+                balance, so type the exact amount from its app if you have it.
+              </>
+            )}
           </p>
           <p role="alert" className="basis-full text-xs font-bold text-coral-text empty:hidden">{error}</p>
         </form>
