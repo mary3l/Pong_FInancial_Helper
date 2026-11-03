@@ -5,10 +5,12 @@ import { scheduledItems, sortItems, type ForecastItem, type ScheduleInputs } fro
 import type { PriceMemory } from "@/lib/grocery";
 import {
   countsAsSpending,
+  isInterestPayout,
   isSpendable,
   isWalletPurpose,
   roundCents,
   type AccountType,
+  type InterestPayout,
   type TransactionType,
   type WalletPurpose,
 } from "@/lib/money";
@@ -37,6 +39,8 @@ export type Account = {
   interestRate: number | null;
   /** When the current rate was set: interest estimates start here. */
   interestSince: string | null;
+  /** When the bank credits it: daily (MariBank) or on the 1st (GoTyme Go Save). */
+  interestPayout: InterestPayout;
 };
 
 export type Transaction = {
@@ -142,12 +146,16 @@ export async function getAccounts({ includeArchived = false, includePeople = fal
   };
   const base = "id, name, type, starting_balance, credit_limit, due_day, archived";
 
+  const wallet = `${base}, purpose, interest_rate, interest_since`;
+
   const [first, balances] = await Promise.all([
-    select(`${base}, purpose, interest_rate, interest_since`),
+    select(`${wallet}, interest_payout`),
     supabase.from("account_balances").select("account_id, balance"),
   ]);
-  // 42703: migration 0010 hasn't been run yet. Every wallet is spending money then.
-  const accounts = first.error?.code === "42703" ? await select(base) : first;
+  // 42703: migration 0011 (or 0010) hasn't been run yet. Interest is then
+  // credited daily, and without 0010 every wallet is spending money.
+  const second = first.error?.code === "42703" ? await select(wallet) : first;
+  const accounts = second.error?.code === "42703" ? await select(base) : second;
   if (accounts.error) throw dbError(accounts.error);
   if (balances.error) throw dbError(balances.error);
 
@@ -166,6 +174,7 @@ export async function getAccounts({ includeArchived = false, includePeople = fal
     purpose: isWalletPurpose(a.purpose) ? a.purpose : "spending",
     interestRate: a.interest_rate == null ? null : Number(a.interest_rate),
     interestSince: a.interest_since ?? null,
+    interestPayout: isInterestPayout(a.interest_payout) ? a.interest_payout : "daily",
   }));
 }
 
@@ -180,6 +189,7 @@ type AccountRow = {
   purpose?: string;
   interest_rate?: number | string | null;
   interest_since?: string | null;
+  interest_payout?: string;
 };
 
 /** The last day interest was logged on each wallet, by account id. */

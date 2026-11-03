@@ -1,6 +1,8 @@
 // Money rules shared by the server and the browser. See the design canvas,
 // rows 4 and 5, and the comments in supabase/migrations.
 
+import { daysBetween } from "@/lib/dates";
+
 /** "person" holds utang and pautang with one person (Phase 4). */
 export type AccountType = "cash" | "bank" | "ewallet" | "credit_line" | "loan" | "person";
 export type TransactionType = "expense" | "income" | "transfer";
@@ -72,6 +74,95 @@ export function dailyInterest(balance: number, ratePerYear: number): number {
 /** Interest after tax over `days` days on a steady balance. */
 export function interestFor(balance: number, ratePerYear: number, days: number): number {
   return roundCents(dailyInterest(balance, ratePerYear) * Math.max(0, days));
+}
+
+/**
+ * When a bank credits the interest it works out every day. MariBank adds it
+ * daily; GoTyme Go Save adds the month's interest on the 1st.
+ */
+export const INTEREST_PAYOUTS = [
+  { value: "daily", label: "Every day" },
+  { value: "monthly", label: "On the 1st of the month" },
+] as const;
+
+export type InterestPayout = (typeof INTEREST_PAYOUTS)[number]["value"];
+
+export function isInterestPayout(value: unknown): value is InterestPayout {
+  return INTEREST_PAYOUTS.some((p) => p.value === value);
+}
+
+/** GoTyme pays monthly; a new wallet named after it starts that way. */
+export function suggestedPayout(walletName: string): InterestPayout {
+  return /go\s*tyme/i.test(walletName) ? "monthly" : "daily";
+}
+
+/** "2026-11-03" → "2026-11-01" */
+function firstOfMonth(date: string): string {
+  return `${date.slice(0, 7)}-01`;
+}
+
+/** "2026-12-15" → "2027-01-01" */
+function firstOfNextMonth(date: string): string {
+  const [y, m] = date.split("-").map(Number);
+  return m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, "0")}-01`;
+}
+
+export type InterestEstimate = {
+  /** After tax, on today's balance. */
+  perDay: number;
+  /** What's built up and not credited yet, from `since` to today. */
+  since: string;
+  days: number;
+  amount: number;
+  /**
+   * Monthly payout (GoTyme): what the bank credited on the 1st that isn't
+   * logged yet, from the last logged interest (or the rate) up to `on`.
+   */
+  credited: { on: string; from: string; amount: number } | null;
+  /** Monthly payout: the next 1st. Null for daily. */
+  nextPayout: string | null;
+};
+
+/**
+ * What a wallet's interest looks like today. Daily payout: everything since
+ * the last logged interest (or since the rate was set) is already in the
+ * bank's balance. Monthly payout: the part up to the last 1st is credited,
+ * the rest builds up until the next 1st. Estimates use today's balance.
+ */
+export function interestEstimate(
+  wallet: {
+    balance: number;
+    interestRate: number;
+    interestSince: string | null;
+    interestPayout: InterestPayout;
+  },
+  lastLogged: string | null,
+  today: string,
+): InterestEstimate {
+  const { balance, interestRate: rate } = wallet;
+  const start = [wallet.interestSince ?? today, lastLogged ?? ""].sort().at(-1)!;
+  const perDay = roundCents(dailyInterest(balance, rate));
+
+  if (wallet.interestPayout === "daily") {
+    const days = Math.max(0, daysBetween(start, today));
+    return { perDay, since: start, days, amount: interestFor(balance, rate, days), credited: null, nextPayout: null };
+  }
+
+  const payday = firstOfMonth(today);
+  const credited =
+    start < payday
+      ? { on: payday, from: start, amount: interestFor(balance, rate, daysBetween(start, payday)) }
+      : null;
+  const since = credited ? payday : start;
+  const days = Math.max(0, daysBetween(since, today));
+  return {
+    perDay,
+    since,
+    days,
+    amount: interestFor(balance, rate, days),
+    credited,
+    nextPayout: firstOfNextMonth(today),
+  };
 }
 
 /** Credit lines (SPayLater, Atome) and loans (SLoan, MariLoan): money you owe. */

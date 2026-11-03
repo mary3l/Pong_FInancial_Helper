@@ -6,9 +6,11 @@ import { today } from "@/lib/dates";
 import {
   MAX_AMOUNT,
   canEarnInterest,
+  isInterestPayout,
   isWalletPurpose,
   isWalletType,
   roundCents,
+  type InterestPayout,
   type WalletPurpose,
   type WalletType,
 } from "@/lib/money";
@@ -21,13 +23,16 @@ export type WalletInput = {
   purpose?: WalletPurpose;
   /** % a year, banks and e-wallets only; null for none. */
   interestRate?: number | null;
+  /** When the bank credits the interest: daily (MariBank) or on the 1st (GoTyme). */
+  interestPayout?: InterestPayout;
 };
 export type WalletResult = { error?: string; archived?: boolean };
 
 const NAME_MAX = 60;
 
-// 42703: the purpose and interest columns from migration 0010 are missing.
-const NEEDS_MIGRATION = "Run step 10 in supabase/SQL_GUIDE.md first, then try again.";
+// 42703: the purpose and interest columns from migration 0010 (or the payout
+// column from 0011) are missing.
+const NEEDS_MIGRATION = "Run steps 10 and 11 in supabase/SQL_GUIDE.md first, then try again.";
 
 function cleanName(name: unknown) {
   return String(name ?? "").replace(/\s+/g, " ").trim();
@@ -47,16 +52,24 @@ function checkWallet(w: WalletInput): string | null {
     if (!canEarnInterest(w.type)) return "Only banks and e-wallets earn interest.";
     if (!Number.isFinite(rate) || rate <= 0 || rate > 100) return `Check the interest rate for ${name}.`;
   }
+  if (w.interestPayout !== undefined && !isInterestPayout(w.interestPayout)) {
+    return `Pick when ${name} pays interest.`;
+  }
   return null;
 }
 
-/** The purpose and interest columns, only when the form sent them. */
-function extras(w: WalletInput) {
+/**
+ * The purpose and interest columns, only when the form sent them. A daily
+ * payout is the column's default, so it's only sent when it changes: wallets
+ * still save before migration 0011.
+ */
+function extras(w: WalletInput, payoutBefore = "daily") {
   return {
     ...(w.purpose !== undefined && { purpose: w.purpose }),
     ...(w.interestRate !== undefined && {
       interest_rate: w.interestRate === null ? null : Math.round(w.interestRate * 100) / 100,
     }),
+    ...(w.interestPayout !== undefined && w.interestPayout !== payoutBefore && { interest_payout: w.interestPayout }),
   };
 }
 
@@ -110,7 +123,7 @@ export async function updateWallet(id: string, input: WalletInput): Promise<Wall
 
   const starting =
     Number(account.data.starting_balance) + (balance - Number(current.data.balance));
-  const row = extras(input);
+  const row = extras(input, account.data.interest_payout ?? "daily");
   // A new rate starts a new estimate; without one there's nothing to estimate.
   if ("interest_rate" in row) {
     const before = account.data.interest_rate == null ? null : Number(account.data.interest_rate);
