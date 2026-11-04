@@ -54,6 +54,16 @@ export function bnplFirstDue(purchasedOn: string, dueDay: number | null): string
   return nextOccurrence({ frequency: "monthly", day1: dueDay, day2: null }, addDays(purchasedOn, 6));
 }
 
+/**
+ * The bill an older, unpaid purchase goes on when you add it now: the one
+ * after the purchase, or the next one from today if that date has passed.
+ */
+export function catchUpDue(purchasedOn: string, dueDay: number | null, today: string): string {
+  const afterPurchase = bnplFirstDue(purchasedOn, dueDay);
+  const nextBill = dueDay ? nextOccurrence({ frequency: "monthly", day1: dueDay, day2: null }, addDays(today, -1)) : today;
+  return afterPurchase < nextBill ? nextBill : afterPurchase;
+}
+
 export type LoanTerms = {
   /** What landed in your wallet. */
   received: number;

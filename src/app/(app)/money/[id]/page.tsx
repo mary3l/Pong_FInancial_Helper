@@ -3,13 +3,15 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { LogButton } from "@/components/log-button";
-import { getAccounts, getInstallmentPlans, installmentInputs } from "@/lib/data";
+import { getAccounts, getInstallmentPlans, getSplitsPaidWith, installmentInputs } from "@/lib/data";
 import { addDays, formatShortDay, today as getToday } from "@/lib/dates";
 import { scheduledItems } from "@/lib/forecast";
-import { dueText } from "@/lib/installments";
+import { catchUpDue, dueText } from "@/lib/installments";
 import { formatPeso, isDebt, roundCents } from "@/lib/money";
 import { nextOccurrence } from "@/lib/schedule";
+import { toSplitBill, type SplitBill } from "@/lib/splits";
 import { AccountActions, PayBillButton, RemovePlanButton, UpcomingPayments } from "./account-actions";
+import { AddSplitsButton } from "./add-splits";
 
 export const metadata = { title: "Credit line · Pong Money" };
 
@@ -32,11 +34,28 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
   // Read the clock only at request time (Cache Components).
   await connection();
   const today = getToday();
-  const [accounts, plans] = await Promise.all([getAccounts({ includeArchived: true }), getInstallmentPlans(id)]);
+  const [accounts, plans, splits] = await Promise.all([
+    getAccounts({ includeArchived: true }),
+    getInstallmentPlans(id),
+    getSplitsPaidWith(id),
+  ]);
   const account = accounts.find((a) => a.id === id);
   if (!account || !isDebt(account.type)) notFound();
 
   const owed = Math.max(0, roundCents(-account.balance));
+  // Plans a split bill made: the whole bill is on the credit line, but only your share is yours.
+  const splitOfPlan = new Map<string, SplitBill>();
+  // Splits saved before they made a plan: in what you owe, but on no bill yet. Newest first.
+  const notOnBill: (SplitBill & { dueOn: string })[] = [];
+  for (const [splitId, records] of splits) {
+    const plan = plans.find((p) => p.sourceTxnId && records.some((r) => r.id === p.sourceTxnId));
+    if (plan) splitOfPlan.set(plan.id, toSplitBill(splitId, records));
+    else notOnBill.push({ ...toSplitBill(splitId, records), dueOn: catchUpDue(records[0].occurredOn, account.dueDay, today) });
+  }
+  notOnBill.sort((a, b) => b.occurredOn.localeCompare(a.occurredOn));
+  const notOnBillTotal = roundCents(notOnBill.reduce((s, b) => s + b.total, 0));
+  const notOnBillDue = [...new Set(notOnBill.map((b) => b.dueOn))];
+  const planOfPayment = new Map(plans.flatMap((p) => p.payments.map((x) => [x.id, p.id] as const)));
   // Unpaid installments, late ones first, as forecast items for Mark paid.
   const upcoming = scheduledItems(
     { recurring: [], billPayments: [], planned: [], installments: installmentInputs(plans).filter((p) => !p.transactionId) },
@@ -147,6 +166,7 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
                   <span className="text-[13px] text-muted">
                     {plan.months === 1 ? "One payment" : `${plan.months} months`} · {paidCount} of {plan.months} paid
                     {plan.feeTotal > 0 && ` · fees ${formatPeso(plan.feeTotal)}`}
+                    {splitOfPlan.has(plan.id) && ` · split bill`}
                   </span>
                 </span>
                 <span className="font-display text-[17px] font-semibold">
@@ -165,6 +185,40 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
           )}
         </ul>
       </section>
+
+      {credit && notOnBill.length > 0 && (
+        <section aria-labelledby="splits-heading" className="flex flex-col gap-2">
+          <h2 id="splits-heading" className="font-display text-xl font-semibold">Split bills not on a bill yet</h2>
+          <div className="flex flex-col gap-3 rounded-[20px] bg-white px-4 py-3.5">
+            <p className="text-sm leading-snug text-muted">
+              You split {notOnBill.length === 1 ? "this" : `these ${notOnBill.length}`} with {account.name} before splits
+              went on its bill. {formatPeso(notOnBillTotal)} is in what you owe, but not in Pay bill or your forecast yet.
+            </p>
+            <ul className="flex flex-col gap-3">
+              {notOnBill.map((split) => (
+                <li key={split.splitId} className="flex flex-col gap-2">
+                  <span className="flex flex-col">
+                    <span className="truncate font-bold">{split.title}</span>
+                    <span className="text-[13px] text-muted">
+                      {formatShortDay(split.occurredOn, today)} · split with {split.others.length} · goes on the{" "}
+                      {formatShortDay(split.dueOn, today)} bill
+                    </span>
+                  </span>
+                  <SplitBreakdown split={split} />
+                </li>
+              ))}
+            </ul>
+            <AddSplitsButton
+              splitIds={notOnBill.map((b) => b.splitId)}
+              label={
+                notOnBillDue.length === 1
+                  ? `Add ${notOnBill.length === 1 ? "it" : `all ${notOnBill.length}`} to the ${formatShortDay(notOnBillDue[0], today)} bill · ${formatPeso(notOnBillTotal)}`
+                  : `Add all ${notOnBill.length} to their bills · ${formatPeso(notOnBillTotal)}`
+              }
+            />
+          </div>
+        </section>
+      )}
 
       {bills.length > 0 && (
         <section aria-labelledby="upcoming-heading" className="flex flex-col gap-2">
@@ -188,13 +242,22 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
                 <span className="font-display text-2xl font-semibold">{formatPeso(bill.total)}</span>
               </div>
               <ul className="flex flex-col">
-                {bill.items.map((item) => (
-                  <li key={item.key} className="flex items-center gap-3 border-b border-line-soft py-2.5 last:border-0">
-                    <span className="min-w-0 flex-1 truncate font-bold">{item.name}</span>
-                    <span className="font-display text-[17px] font-semibold">{formatPeso(item.amount ?? 0)}</span>
-                    <LogButton item={item} />
-                  </li>
-                ))}
+                {bill.items.map((item) => {
+                  const split = splitOfPlan.get(planOfPayment.get(item.id) ?? "");
+                  return (
+                    <li key={item.key} className="flex flex-col gap-2 border-b border-line-soft py-2.5 last:border-0">
+                      <div className="flex items-center gap-3">
+                        <span className="flex min-w-0 flex-1 flex-col">
+                          <span className="truncate font-bold">{item.name}</span>
+                          {split && <span className="text-[13px] text-muted">Split bill · {split.others.length + (split.mine ? 1 : 0)} people</span>}
+                        </span>
+                        <span className="font-display text-[17px] font-semibold">{formatPeso(item.amount ?? 0)}</span>
+                        <LogButton item={item} />
+                      </div>
+                      {split && <SplitBreakdown split={split} />}
+                    </li>
+                  );
+                })}
               </ul>
             </section>
           ))}
@@ -208,5 +271,28 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
 
       <AccountActions account={account} />
     </>
+  );
+}
+
+/** Under a bill item that's a split: the whole bill on the credit line, and the part that's yours. */
+function SplitBreakdown({ split }: { split: SplitBill }) {
+  const mine = split.mine?.amount ?? 0;
+  return (
+    <Link
+      href={`/activity/split/${split.splitId}`}
+      className="flex flex-col rounded-[16px] bg-mint px-3.5 py-1 hover:bg-sea-tint"
+    >
+      <span className="flex items-center justify-between gap-3 border-b border-line-soft py-2">
+        <span className="text-[15px] font-bold">Total bill</span>
+        <span className="font-display text-[17px] font-semibold">{formatPeso(split.total)}</span>
+      </span>
+      <span className="flex items-center justify-between gap-3 py-2">
+        <span className="flex flex-col">
+          <span className="text-[15px] font-bold">My share</span>
+          <span className="text-xs text-muted">The other {formatPeso(roundCents(split.total - mine))} is pautang</span>
+        </span>
+        <span className="font-display text-[17px] font-semibold text-sea-dark">{formatPeso(mine)}</span>
+      </span>
+    </Link>
   );
 }

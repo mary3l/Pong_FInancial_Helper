@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { AddTransactionSkeleton } from "@/components/add-transaction";
@@ -28,14 +29,27 @@ async function EditTransaction({ params }: Pick<PageProps<"/activity/[id]">, "pa
   const used = (a: { id: string }) => a.id === transaction.accountId || a.id === transaction.toAccountId;
   const usable = accounts.filter((a) => used(a) || (!a.archived && a.type !== "person"));
 
-  return (
+  const form = (
     <TransactionForm
       accounts={usable}
       templates={[]}
       transaction={transaction}
       today={today()}
       mode="page"
-      closeHref={`/activity?p=${transaction.occurredOn}`}
+      closeHref={transaction.splitId ? `/activity/split/${transaction.splitId}` : `/activity?p=${transaction.occurredOn}`}
     />
+  );
+  if (!transaction.splitId) return form;
+  return (
+    <div className="flex flex-col gap-3">
+      <Link
+        href={`/activity/split/${transaction.splitId}`}
+        className="flex items-center justify-between gap-3 rounded-[18px] bg-sea-tint px-4 py-3 text-sm font-bold text-sea-dark"
+      >
+        <span>This is one share of a split bill. Changing it doesn&apos;t change the other shares.</span>
+        <span className="shrink-0 font-extrabold underline">See the whole bill</span>
+      </Link>
+      {form}
+    </div>
   );
 }

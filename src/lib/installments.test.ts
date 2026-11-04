@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bnplFee, bnplFirstDue, buildSchedule, dueText, loanSchedule, loanSummary, upcomingSchedule } from "@/lib/installments";
+import { bnplFee, bnplFirstDue, buildSchedule, catchUpDue, dueText, loanSchedule, loanSummary, upcomingSchedule } from "@/lib/installments";
 import { roundCents } from "@/lib/money";
 
 const sum = (values: number[]) => roundCents(values.reduce((a, b) => a + b, 0));
@@ -69,5 +69,16 @@ describe("upcoming payments and running installments", () => {
     // Only the interest is spending; the rest pays down what you owe.
     expect(rows.every((r) => r.principalPart === 1050 && r.feePart === 150 && r.amount === 1200)).toBe(true);
     expect(sum(rows.map((r) => r.principalPart))).toBe(3150);
+  });
+});
+
+describe("older purchases added to a bill", () => {
+  it("goes on the bill after the purchase, or the next one if that has passed", () => {
+    // Atome, due every 16th; today is Nov 4.
+    expect(catchUpDue("2026-10-23", 16, "2026-11-04")).toBe("2026-11-16");
+    expect(catchUpDue("2026-10-08", 16, "2026-11-04")).toBe("2026-11-16");
+    expect(catchUpDue("2026-11-12", 16, "2026-11-12")).toBe("2026-12-16");
+    // Due today still counts as the next bill.
+    expect(catchUpDue("2026-10-01", 16, "2026-11-16")).toBe("2026-11-16");
   });
 });

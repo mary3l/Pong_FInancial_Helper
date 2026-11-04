@@ -52,6 +52,8 @@ export type Transaction = {
   category: string | null;
   note: string | null;
   occurredOn: string;
+  /** The same on every record of one split bill (migration 0012). */
+  splitId: string | null;
 };
 
 export type RecurringItem = {
@@ -99,6 +101,8 @@ export type InstallmentPlan = {
   feeTotal: number;
   months: number;
   payFromAccountId: string | null;
+  /** The purchase behind it (a split bill: one of its records); null for a bill added by hand. */
+  sourceTxnId: string | null;
   payments: ScheduledPayment[];
 };
 
@@ -115,7 +119,7 @@ export type ScheduledPayment = {
 };
 
 /** A recent expense, income or transfer to repeat with one tap in Add. */
-export type Template = Omit<Transaction, "id" | "occurredOn">;
+export type Template = Omit<Transaction, "id" | "occurredOn" | "splitId">;
 
 /**
  * Supabase errors are plain objects; wrap them so error pages and logs show
@@ -284,7 +288,7 @@ export async function getInstallmentPlans(accountId?: string): Promise<Installme
   const supabase = await db();
   let plans = supabase
     .from("installment_plans")
-    .select("id, kind, account_id, name, principal, fee_total, months, pay_from_account_id")
+    .select("id, kind, account_id, name, principal, fee_total, months, pay_from_account_id, source_txn_id")
     .order("created_at");
   if (accountId) plans = plans.eq("account_id", accountId);
   const [p, s] = await Promise.all([
@@ -306,6 +310,7 @@ export async function getInstallmentPlans(accountId?: string): Promise<Installme
     feeTotal: Number(plan.fee_total),
     months: plan.months,
     payFromAccountId: plan.pay_from_account_id,
+    sourceTxnId: plan.source_txn_id,
     payments: s.data
       .filter((row) => row.plan_id === plan.id)
       .map((row) => ({
@@ -471,7 +476,8 @@ export async function getScheduled(today: string) {
   return { accounts, recurring, planned, items };
 }
 
-const TXN_COLUMNS = "id, type, amount, account_id, to_account_id, category, note, occurred_on";
+const TXN_BASE = "id, type, amount, account_id, to_account_id, category, note, occurred_on";
+const TXN_COLUMNS = `${TXN_BASE}, split_id`;
 
 type TxnRow = {
   id: string;
@@ -482,6 +488,7 @@ type TxnRow = {
   category: string | null;
   note: string | null;
   occurred_on: string;
+  split_id?: string | null;
 };
 
 function toTransaction(r: TxnRow): Transaction {
@@ -494,7 +501,19 @@ function toTransaction(r: TxnRow): Transaction {
     category: r.category,
     note: r.note,
     occurredOn: r.occurred_on,
+    splitId: r.split_id ?? null,
   };
+}
+
+type Read<T> = PromiseLike<{ data: T; error: { code?: string; message: string } | null }>;
+
+/**
+ * Reads transactions with split_id, or without it while migration 0012
+ * hasn't been run (42703). Splits then show record by record.
+ */
+async function readTxns<T>(run: (columns: string) => Read<T>) {
+  const first = await run(TXN_COLUMNS);
+  return first.error?.code === "42703" ? run(TXN_BASE) : first;
 }
 
 /** Newest first. `from` and `to` are inclusive dates; `accountId` limits it to one account. */
@@ -511,41 +530,83 @@ export async function getTransactions({
   limit?: number;
   accountId?: string;
 } = {}): Promise<Transaction[]> {
+  // It goes into a PostgREST filter string, so only ever a uuid.
+  if (accountId && !/^[0-9a-f-]{36}$/i.test(accountId)) return [];
+  // Strip characters that have meaning in a PostgREST filter.
+  const term = search?.replace(/[%_,.()*\\:"]/g, " ").trim();
   const supabase = await db();
-  let query = supabase
-    .from("transactions")
-    .select(TXN_COLUMNS)
-    .order("occurred_on", { ascending: false })
-    .order("created_at", { ascending: false });
-  if (from) query = query.gte("occurred_on", from);
-  if (to) query = query.lte("occurred_on", to);
-  if (accountId) {
-    // It goes into a PostgREST filter string, so only ever a uuid.
-    if (!/^[0-9a-f-]{36}$/i.test(accountId)) return [];
-    query = query.or(`account_id.eq.${accountId},to_account_id.eq.${accountId}`);
-  }
-  if (search) {
-    // Strip characters that have meaning in a PostgREST filter.
-    const term = search.replace(/[%_,.()*\\:"]/g, " ").trim();
+  const { data, error } = await readTxns((columns) => {
+    let query = supabase
+      .from("transactions")
+      .select(columns)
+      .order("occurred_on", { ascending: false })
+      .order("created_at", { ascending: false });
+    if (from) query = query.gte("occurred_on", from);
+    if (to) query = query.lte("occurred_on", to);
+    if (accountId) query = query.or(`account_id.eq.${accountId},to_account_id.eq.${accountId}`);
     if (term) query = query.or(`note.ilike.%${term}%,category.ilike.%${term}%`);
-  }
-  if (limit) query = query.limit(limit);
-
-  const { data, error } = await query;
+    if (limit) query = query.limit(limit);
+    return query;
+  });
   if (error) throw dbError(error);
-  return (data as TxnRow[]).map(toTransaction);
+  return (data as unknown as TxnRow[]).map(toTransaction);
 }
 
 export async function getTransaction(id: string): Promise<Transaction | null> {
   if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
   const supabase = await db();
+  const { data, error } = await readTxns((columns) =>
+    supabase.from("transactions").select(columns).eq("id", id).maybeSingle(),
+  );
+  if (error) throw dbError(error);
+  return data ? toTransaction(data as unknown as TxnRow) : null;
+}
+
+/** False while migration 0012 (transactions.split_id) hasn't been run. */
+export async function hasSplitIds(): Promise<boolean> {
+  const supabase = await db();
+  const { error } = await supabase.from("transactions").select("split_id").limit(1);
+  return error?.code !== "42703";
+}
+
+/** Every record of one split bill, your share first. Empty if there's no such split. */
+export async function getSplit(splitId: string): Promise<Transaction[]> {
+  if (!/^[0-9a-f-]{36}$/i.test(splitId)) return [];
+  const supabase = await db();
   const { data, error } = await supabase
     .from("transactions")
     .select(TXN_COLUMNS)
-    .eq("id", id)
-    .maybeSingle();
+    .eq("split_id", splitId)
+    .order("created_at");
+  if (error?.code === "42703") return [];
   if (error) throw dbError(error);
-  return data ? toTransaction(data as TxnRow) : null;
+  const rows = (data as unknown as TxnRow[]).map(toTransaction);
+  return [...rows.filter((t) => t.type === "expense"), ...rows.filter((t) => t.type !== "expense")];
+}
+
+/**
+ * The split bills paid from one wallet or credit line, by split id: every
+ * record, your share first. Empty while migration 0012 hasn't been run.
+ */
+export async function getSplitsPaidWith(accountId: string): Promise<Map<string, Transaction[]>> {
+  const splits = new Map<string, Transaction[]>();
+  if (!/^[0-9a-f-]{36}$/i.test(accountId)) return splits;
+  const supabase = await db();
+  const { data, error } = await supabase
+    .from("transactions")
+    .select(TXN_COLUMNS)
+    .eq("account_id", accountId)
+    .not("split_id", "is", null)
+    .order("created_at");
+  if (error?.code === "42703") return splits;
+  if (error) throw dbError(error);
+  for (const t of (data as unknown as TxnRow[]).map(toTransaction)) {
+    const list = splits.get(t.splitId!) ?? [];
+    if (t.type === "expense") list.unshift(t);
+    else list.push(t);
+    splits.set(t.splitId!, list);
+  }
+  return splits;
 }
 
 /**

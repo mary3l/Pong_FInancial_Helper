@@ -16,6 +16,7 @@ import { Pong, type PongMood } from "@/components/pong";
 import {
   amountToExpression,
   evaluate,
+  expressionFromText,
   hasOperator,
   keyFromKeyboard,
   press,
@@ -144,9 +145,16 @@ export function TransactionForm({
   const toAccount = accounts.find((a) => a.id === toAccountId);
   const keep = [transaction?.accountId, transaction?.toAccountId];
   const splitting = splitOn && type === "expense" && !editing;
-  const fromList = usableFor(type, accounts, keep).filter((a) => !splitting || isSpendable(a.type));
-  const withPlan = !editing && !splitting && type === "expense" && account?.type === "credit_line";
+  const fromList = usableFor(type, accounts, keep);
+  // A split you paid with a credit line goes on its bill too, for the whole amount.
+  const someonePaid = splitting && participants.some((p) => p.key === paidBy);
+  const withPlan = !editing && !someonePaid && type === "expense" && account?.type === "credit_line";
   const shares = splitting ? splitShares(amount, participants, splitMethod, exact) : null;
+  // Exact amounts: what's still to be shared out, counting down to ₱0.
+  const leftToSplit =
+    splitting && splitMethod === "exact" && participants.length
+      ? roundCents(amount - ["me", ...participants.map((p) => p.key)].reduce((s, k) => s + readShare(exact[k]), 0))
+      : null;
   const rate = Number(planRate);
   const firstDue = planFirstDue ?? (isValidDate(date) ? bnplFirstDue(date, account?.dueDay ?? null) : "");
   const planRows =
@@ -219,6 +227,10 @@ export function TransactionForm({
         setSaveError(shares?.problem ?? "Check the shares.");
         return;
       }
+      if (withPlan && !(rate >= 0 && rate <= 10)) {
+        setSaveError("Check the monthly fee (0 to 10%).");
+        return;
+      }
       const whoOf = (p: Participant) => (p.personId ? { personId: p.personId } : { name: p.name });
       const payer = participants.find((p) => p.key === paidBy);
       startTransition(async () => {
@@ -231,6 +243,7 @@ export function TransactionForm({
           walletId: payer ? null : accountId,
           myShare: shares.mine,
           others: participants.map((p) => ({ who: whoOf(p), amount: shares.byKey[p.key] ?? 0 })),
+          plan: withPlan ? { months: planMonths, ratePerMonth: rate, firstDue, payFromAccountId: planPayFrom || null } : null,
         });
         if (result.error) setSaveError(result.error);
         else close();
@@ -328,9 +341,6 @@ export function TransactionForm({
   function toggleSplit(on: boolean) {
     setSplitOn(on);
     setSaveError(null);
-    if (on && account && !isSpendable(account.type)) {
-      setAccountId(accounts.find((a) => isSpendable(a.type))?.id ?? accountId);
-    }
   }
 
   function toggleParticipant(p: Participant) {
@@ -347,7 +357,13 @@ export function TransactionForm({
     setNewName("");
   }
   const title = editing ? "Edit transaction" : TITLES[type];
-  const saveLabel = pending ? "Saving…" : amount ? `Save ${formatPeso(amount)}` : "Enter an amount";
+  const saveLabel = pending
+    ? splitting ? "Splitting…" : "Saving…"
+    : !amount
+      ? "Enter an amount"
+      : splitting
+        ? `Split ${formatPeso(amount)}`
+        : `Save ${formatPeso(amount)}`;
   const transferWallets = usableFor("transfer", accounts, keep).filter((a) => a.id !== accountId);
 
   const typePicker = (className: string) => (
@@ -411,8 +427,19 @@ export function TransactionForm({
           <span className="font-display text-[52px] leading-[1.05] font-semibold">
             {formatPeso(Math.max(0, value ?? 0))}
           </span>
-          <span className={`min-h-5 text-sm font-bold ${calc.error ? "text-coral-text" : "text-muted"}`}>
-            {calc.error ?? summary({ type, category, account, toAccount, date, today })}
+          <span
+            className={`min-h-5 text-sm font-bold ${
+              calc.error || (leftToSplit !== null && leftToSplit < 0)
+                ? "text-coral-text"
+                : leftToSplit === 0
+                  ? "text-sea-dark"
+                  : "text-muted"
+            }`}
+          >
+            {calc.error ??
+              (leftToSplit === null || !amount
+                ? summary({ type, category, account, toAccount, date, today })
+                : splitLeftLabel(leftToSplit))}
           </span>
         </div>
 
@@ -589,6 +616,24 @@ export function TransactionForm({
                           )}
                         </li>
                       ))}
+                      {leftToSplit !== null && (
+                        <li
+                          aria-live="polite"
+                          className={`mt-1 flex items-center justify-between gap-3 rounded-[12px] px-3 py-2 text-[15px] ${
+                            leftToSplit === 0 ? "bg-sea-tint text-sea-dark" : leftToSplit < 0 ? "bg-coral-tint text-coral-text" : "bg-mint"
+                          }`}
+                        >
+                          <span className="font-extrabold">
+                            {leftToSplit === 0 ? "✓ Adds up to the bill" : leftToSplit < 0 ? "Over the bill by" : "Left to split"}
+                          </span>
+                          <span className="text-right">
+                            <span className="font-display font-semibold">
+                              {formatPeso(leftToSplit === 0 ? amount : Math.abs(leftToSplit))}
+                            </span>
+                            {leftToSplit !== 0 && <span className="block text-xs text-muted">of {formatPeso(amount)}</span>}
+                          </span>
+                        </li>
+                      )}
                     </ul>
                     <p className="text-xs text-muted">
                       {payer
@@ -667,7 +712,9 @@ export function TransactionForm({
                 ? `${formatPeso(planRows[0].amount)}${planMonths > 1 ? `/mo × ${planMonths}` : ""} from ${formatShortDay(planRows[0].dueOn, today)}` +
                   (planRows.some((r) => r.feePart > 0) ? ` · fees ${formatPeso(planRows.reduce((s, r) => s + r.feePart, 0))}` : " · no fees")
                 : "Type an amount to see the payments."}
-              {" "}The purchase counts as spending today; each payment is a transfer, and only fees are spending.
+              {splitting
+                ? " The whole bill goes on your credit line's bill. Only your share is spending; the rest is pautang."
+                : " The purchase counts as spending today; each payment is a transfer, and only fees are spending."}
             </p>
           </div>
         )}
@@ -752,6 +799,21 @@ export function TransactionForm({
 }
 
 type Shares = { ok: boolean; problem?: string; mine: number; byKey: Record<string, number> };
+
+/** A typed share, including a sum still being typed ("50+20"); 0 if it can't be read yet. */
+function readShare(text: string | undefined): number {
+  if (!text?.trim()) return 0;
+  const plain = parseAmount(text);
+  if (!Number.isNaN(plain)) return plain;
+  const expr = expressionFromText(text);
+  const result = expr ? evaluate(expr) : null;
+  return result !== null && result > 0 ? roundCents(result) : 0;
+}
+
+function splitLeftLabel(left: number): string {
+  if (left === 0) return "✓ The shares add up";
+  return left > 0 ? `${formatPeso(left)} left to split` : `Shares are ${formatPeso(-left)} over`;
+}
 
 /** Each person's share of `total`: equal (you absorb the rounding) or typed in. */
 function splitShares(

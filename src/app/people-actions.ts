@@ -4,9 +4,11 @@ import { refresh } from "next/cache";
 import { SIGNED_OUT_ERROR, signedInClient } from "@/lib/auth";
 import { isCategoryFor } from "@/lib/categories";
 import { isValidDate, today } from "@/lib/dates";
+import { bnplFee, bnplFirstDue, buildSchedule, catchUpDue } from "@/lib/installments";
 import { MAX_AMOUNT, isSpendable, roundCents, type AccountType } from "@/lib/money";
 import type { EntryKind } from "@/lib/people";
-import { pickWallet, type Client } from "@/lib/server-writes";
+import { pickWallet, savePlan, type Client } from "@/lib/server-writes";
+import { typedNote } from "@/lib/splits";
 
 // Phase 4: utang, pautang and split bills. Every one of these is a transfer
 // or an expense on the person's account: see 0006_people.sql.
@@ -59,10 +61,12 @@ async function personFor(supabase: Client, who: Who): Promise<string | null> {
   return error ? null : data.id;
 }
 
-/** A cash, bank or e-wallet you own. */
-async function isWallet(supabase: Client, id: string): Promise<boolean> {
+/** A wallet of yours; with `credit`, a BNPL or bank credit line counts too (paying a bill with it). */
+async function isWallet(supabase: Client, id: string, { credit = false } = {}): Promise<boolean> {
   const { data } = await supabase.from("accounts").select("type").eq("id", id).maybeSingle();
-  return Boolean(data && isSpendable(data.type as AccountType));
+  if (!data) return false;
+  const type = data.type as AccountType;
+  return isSpendable(type) || (credit && type === "credit_line");
 }
 
 async function balanceOf(supabase: Client, personId: string): Promise<number | null> {
@@ -229,7 +233,23 @@ export type SplitInput = {
   myShare: number;
   /** Everyone else's share. */
   others: { who: Who; amount: number }[];
+  /** Paid with a credit line: how you'll pay it back. One payment on the next bill if not given. */
+  plan?: SplitPlan | null;
 };
+
+export type SplitPlan = {
+  /** 1 = pay next month in full. */
+  months: number;
+  /** Fee or interest as a flat % of the bill per month. */
+  ratePerMonth: number;
+  firstDue: string;
+  payFromAccountId: string | null;
+};
+
+/** The name a split's payment plan shows on the credit line's bill. */
+function planName(note: string | null) {
+  return (note ?? "Split bill").slice(0, 60).trim() || "Split bill";
+}
 
 /**
  * Split a bill (the Split toggle in Add). You paid: your share is an
@@ -256,7 +276,25 @@ export async function saveSplit(input: SplitInput): Promise<PeopleResult> {
   };
 
   if (input.paidBy === null) {
-    if (!input.walletId || !(await isWallet(supabase, input.walletId))) return { error: "Pick the wallet you paid with." };
+    if (!input.walletId || !(await isWallet(supabase, input.walletId, { credit: true }))) return { error: "Pick the wallet you paid with." };
+    // Paid with SPayLater, Atome or a bank credit line: the whole bill goes on its bill.
+    const { data: wallet } = await supabase.from("accounts").select("type, due_day").eq("id", input.walletId).single();
+    const credit = wallet?.type === "credit_line";
+    const plan = input.plan ?? {
+      months: 1,
+      ratePerMonth: 0,
+      firstDue: bnplFirstDue(input.occurredOn, wallet?.due_day ?? null),
+      payFromAccountId: null,
+    };
+    if (credit) {
+      if (!Number.isInteger(plan.months) || plan.months < 1 || plan.months > 24) return { error: "Pick how many months." };
+      if (!(plan.ratePerMonth >= 0 && plan.ratePerMonth <= 10)) return { error: "Check the monthly fee (0 to 10%)." };
+      if (!isValidDate(plan.firstDue) || plan.firstDue < input.occurredOn) {
+        return { error: "The first payment can't be before the bill." };
+      }
+    }
+    // One id on every record, so Activity shows the bill as one row.
+    const split = (await hasSplitIds(supabase)) ? { split_id: crypto.randomUUID() } : {};
     if (mine > 0) {
       const { data, error } = await supabase
         .from("transactions")
@@ -267,6 +305,7 @@ export async function saveSplit(input: SplitInput): Promise<PeopleResult> {
           category: input.category,
           note: note ? `${note} (my share)` : "My share",
           occurred_on: input.occurredOn,
+          ...split,
         })
         .select("id")
         .single();
@@ -288,6 +327,7 @@ export async function saveSplit(input: SplitInput): Promise<PeopleResult> {
             to_account_id: personId,
             note: note ? `Split: ${note}` : "Split bill",
             occurred_on: input.occurredOn,
+            ...split,
           },
           { personId, kind: "split", splitTotal: total },
         ));
@@ -296,6 +336,24 @@ export async function saveSplit(input: SplitInput): Promise<PeopleResult> {
         return FAILED;
       }
       created.push(txnId);
+    }
+    if (credit) {
+      const payFrom = plan.payFromAccountId && (await isWallet(supabase, plan.payFromAccountId)) ? plan.payFromAccountId : null;
+      const saved = await savePlan(supabase, {
+        kind: "bnpl",
+        accountId: input.walletId,
+        name: planName(note),
+        principal: total,
+        months: plan.months,
+        payFromAccountId: payFrom,
+        // Your share if you had one: deleting the split deletes the plan too.
+        sourceTxnId: created[0],
+        rows: buildSchedule({ principal: total, feeTotal: bnplFee(total, plan.ratePerMonth, plan.months), months: plan.months, firstDue: plan.firstDue }),
+      });
+      if (!saved) {
+        await undo();
+        return { error: "Couldn't save the payment plan. Please try again." };
+      }
     }
   } else {
     const payer = await personFor(supabase, input.paidBy);
@@ -317,6 +375,174 @@ export async function saveSplit(input: SplitInput): Promise<PeopleResult> {
     }
   }
 
+  refresh();
+  return {};
+}
+
+/** False while migration 0012 (transactions.split_id) hasn't been run. */
+async function hasSplitIds(supabase: Client): Promise<boolean> {
+  const { error } = await supabase.from("transactions").select("split_id").limit(1);
+  return !error;
+}
+
+/** The payment plan on a credit line that one of these records started, with how many payments are made. */
+async function splitPlanOf(supabase: Client, recordIds: string[]) {
+  const { data: plan } = await supabase
+    .from("installment_plans")
+    .select("id, account_id, name, principal, fee_total, months, first_due, pay_from_account_id, source_txn_id")
+    .in("source_txn_id", recordIds)
+    .limit(1)
+    .maybeSingle();
+  if (!plan) return null;
+  const { data: payments } = await supabase
+    .from("scheduled_payments")
+    .select("transfer_txn_id, fee_txn_id")
+    .eq("plan_id", plan.id);
+  const paid = (payments ?? []).filter((p) => p.transfer_txn_id || p.fee_txn_id).length;
+  return { ...plan, paid };
+}
+
+export type SplitEdit = {
+  note: string;
+  occurredOn: string;
+  /** New amount for each record of the split; 0 removes that share. */
+  shares: { id: string; amount: number }[];
+};
+
+/**
+ * Edits a whole split bill: the note and date on every record, and each
+ * share's amount. The bill total is whatever the shares add up to.
+ */
+export async function updateSplit(splitId: string, input: SplitEdit): Promise<PeopleResult> {
+  if (!/^[0-9a-f-]{36}$/i.test(splitId)) return { error: "Couldn't find that split." };
+  if (!isValidDate(input.occurredOn)) return { error: "Pick a date." };
+  const amounts = new Map(input.shares.map((s) => [s.id, roundCents(Number(s.amount))]));
+  if ([...amounts.values()].some((a) => !(a >= 0) || a > MAX_AMOUNT)) return { error: "Check the shares." };
+  const total = roundCents([...amounts.values()].reduce((s, a) => s + a, 0));
+  if (!validAmount(total)) return { error: "The shares need to add up to more than ₱0." };
+
+  const supabase = await signedInClient();
+  if (!supabase) return { error: SIGNED_OUT_ERROR };
+  const { data: records, error } = await supabase.from("transactions").select("id, type").eq("split_id", splitId);
+  if (error || !records?.length) return { error: "Couldn't find that split." };
+  if (records.length !== amounts.size || records.some((r) => !amounts.has(r.id))) {
+    return { error: "This split changed. Reload and try again." };
+  }
+
+  const note = cleanNote(input.note);
+  const plan = await splitPlanOf(supabase, records.map((r) => r.id));
+  // The plan hangs on one record: move it to one that stays, so taking that share off keeps the plan.
+  if (plan && !amounts.get(plan.source_txn_id!)) {
+    const kept = records.filter((r) => amounts.get(r.id));
+    const to = (kept.find((r) => r.type === "expense") ?? kept[0]).id;
+    const { error: moved } = await supabase.from("installment_plans").update({ source_txn_id: to }).eq("id", plan.id);
+    if (moved) return FAILED;
+    plan.source_txn_id = to;
+  }
+  for (const r of records) {
+    const amount = amounts.get(r.id)!;
+    const result = amount
+      ? await supabase
+          .from("transactions")
+          .update({
+            amount,
+            occurred_on: input.occurredOn,
+            note: r.type === "expense" ? (note ? `${note} (my share)` : "My share") : note ? `Split: ${note}` : "Split bill",
+          })
+          .eq("id", r.id)
+      : await supabase.from("transactions").delete().eq("id", r.id);
+    if (result.error) return FAILED;
+  }
+  const kept = records.filter((r) => amounts.get(r.id) && r.type === "transfer").map((r) => r.id);
+  if (kept.length) {
+    const { error: entries } = await supabase.from("person_entries").update({ split_total: total }).in("transaction_id", kept);
+    if (entries) return FAILED;
+  }
+
+  if (plan) {
+    const principal = Number(plan.principal);
+    if (total !== principal && plan.paid === 0) {
+      // Nothing paid yet: the bill follows the new total, on the same due dates.
+      const saved = await savePlan(supabase, {
+        kind: "bnpl",
+        accountId: plan.account_id,
+        name: planName(note),
+        principal: total,
+        months: plan.months,
+        payFromAccountId: plan.pay_from_account_id,
+        sourceTxnId: plan.source_txn_id,
+        rows: buildSchedule({
+          principal: total,
+          feeTotal: roundCents((Number(plan.fee_total) * total) / principal),
+          months: plan.months,
+          firstDue: plan.first_due,
+        }),
+      });
+      if (!saved) return { error: "The split is saved, but its credit line bill didn't update. Please try again." };
+      await supabase.from("installment_plans").delete().eq("id", plan.id);
+    } else if (plan.name !== planName(note)) {
+      await supabase.from("installment_plans").update({ name: planName(note) }).eq("id", plan.id);
+    }
+  }
+
+  refresh();
+  return {};
+}
+
+/**
+ * Splits paid with a credit line before splits made a payment plan: puts
+ * each whole bill on the credit line's bill, as one payment. That's the
+ * bill after the purchase, or the next one if that date has passed (it's
+ * still in what you owe, so it wasn't paid).
+ */
+export async function addSplitsToBill(splitIds: string[]): Promise<PeopleResult> {
+  if (!splitIds.length || splitIds.some((id) => !/^[0-9a-f-]{36}$/i.test(id))) return { error: "Couldn't find that split." };
+  const supabase = await signedInClient();
+  if (!supabase) return { error: SIGNED_OUT_ERROR };
+  const { data: records } = await supabase
+    .from("transactions")
+    .select("id, type, amount, account_id, note, occurred_on, split_id")
+    .in("split_id", splitIds);
+  if (!records?.length) return { error: "Couldn't find that split." };
+
+  const walletIds = [...new Set(records.map((r) => r.account_id))];
+  const { data: wallets } = await supabase.from("accounts").select("id, type, due_day").in("id", walletIds);
+  const now = today();
+  for (const splitId of splitIds) {
+    const bill = records.filter((r) => r.split_id === splitId);
+    if (!bill.length || (await splitPlanOf(supabase, bill.map((r) => r.id)))) continue;
+    const walletId = bill[0].account_id;
+    const wallet = wallets?.find((w) => w.id === walletId);
+    if (wallet?.type !== "credit_line") return { error: "That split wasn't paid with a credit line." };
+    const total = roundCents(bill.reduce((s, r) => s + Number(r.amount), 0));
+    const mine = bill.find((r) => r.type === "expense");
+    const saved = await savePlan(supabase, {
+      kind: "bnpl",
+      accountId: walletId,
+      name: planName(typedNote(bill.map((r) => ({ note: r.note })))),
+      principal: total,
+      months: 1,
+      payFromAccountId: null,
+      sourceTxnId: (mine ?? bill[0]).id,
+      rows: buildSchedule({ principal: total, feeTotal: 0, months: 1, firstDue: catchUpDue(bill[0].occurred_on, wallet.due_day, now) }),
+    });
+    if (!saved) {
+      refresh();
+      return { error: "Couldn't add it to the bill. Please try again." };
+    }
+  }
+
+  refresh();
+  return {};
+}
+
+/** Deletes every record of one split bill: your share and each person's pautang. */
+export async function deleteSplit(splitId: string): Promise<PeopleResult> {
+  if (!/^[0-9a-f-]{36}$/i.test(splitId)) return { error: "Couldn't find that split." };
+  const supabase = await signedInClient();
+  if (!supabase) return { error: SIGNED_OUT_ERROR };
+  const { data, error } = await supabase.from("transactions").delete().eq("split_id", splitId).select("id");
+  if (error || !data?.length) return { error: "Couldn't delete that. Please try again." };
   refresh();
   return {};
 }

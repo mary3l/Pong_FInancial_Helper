@@ -269,6 +269,29 @@ where table_name = 'accounts' and column_name = 'interest_payout';
 
 Expect `1`.
 
+## Step 12 · Split bills as one row in Activity
+
+File: `migrations/0012_split_groups.sql`
+
+Ties together every record a split bill makes (your share and each person's pautang),
+so Activity shows the bill as **one row** and tapping it opens the breakdown.
+
+- `transactions.split_id`: the same id on every record of one split.
+- Splits you already saved are linked too (their transfers and "my share" expense,
+  matched by wallet, day and bill total).
+
+Until you run this, the app still works and shows each record of a split on its own
+row.
+
+**Check**
+
+```sql
+select count(*) from information_schema.columns
+where table_name = 'transactions' and column_name = 'split_id';
+```
+
+Expect `1`.
+
 ---
 
 ## All done?
@@ -291,7 +314,9 @@ select
   exists (select 1 from information_schema.columns
           where table_name = 'accounts' and column_name = 'purpose') as step_10,
   exists (select 1 from information_schema.columns
-          where table_name = 'accounts' and column_name = 'interest_payout') as step_11;
+          where table_name = 'accounts' and column_name = 'interest_payout') as step_11,
+  exists (select 1 from information_schema.columns
+          where table_name = 'transactions' and column_name = 'split_id') as step_12;
 ```
 
 The first `false` is the step to run next.

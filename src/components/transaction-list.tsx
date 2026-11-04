@@ -4,8 +4,12 @@ import { categoryInfo } from "@/lib/categories";
 import type { Account, Transaction } from "@/lib/data";
 import { formatRelativeDay } from "@/lib/dates";
 import { formatPeso } from "@/lib/money";
+import { groupSplits, type ListItem, type SplitBill } from "@/lib/splits";
 
-/** Transactions grouped under day headings, each opening its edit screen. */
+/**
+ * Transactions grouped under day headings, each opening its edit screen. A
+ * split bill shows as one row that opens its breakdown.
+ */
 export function TransactionList({
   transactions,
   accounts,
@@ -19,32 +23,83 @@ export function TransactionList({
   grouped?: boolean;
 }) {
   const names = new Map(accounts.map((a) => [a.id, a.name]));
-  const days: { date: string; items: Transaction[] }[] = [];
-  for (const t of transactions) {
+  const days: { date: string; items: ListItem[] }[] = [];
+  for (const item of groupSplits(transactions)) {
+    const date = item.kind === "one" ? item.txn.occurredOn : item.split.occurredOn;
     const last = days.at(-1);
-    if (grouped && last?.date === t.occurredOn) last.items.push(t);
-    else days.push({ date: t.occurredOn, items: [t] });
+    if (grouped && last?.date === date) last.items.push(item);
+    else days.push({ date, items: [item] });
   }
 
   return (
     <div className="flex flex-col">
       {days.map((day) => (
-        <section key={`${day.date}-${day.items[0].id}`} aria-label={grouped ? formatRelativeDay(day.date, today) : undefined}>
+        <section key={`${day.date}-${itemKey(day.items[0])}`} aria-label={grouped ? formatRelativeDay(day.date, today) : undefined}>
           {grouped && (
             <h3 className="pt-3 pb-1 text-[13px] font-extrabold text-muted uppercase">
               {formatRelativeDay(day.date, today)}
             </h3>
           )}
           <ul className="flex flex-col">
-            {day.items.map((t) => (
-              <li key={t.id}>
-                <TransactionRow txn={t} names={names} today={grouped ? null : today} />
+            {day.items.map((item) => (
+              <li key={itemKey(item)}>
+                {item.kind === "one" ? (
+                  <TransactionRow txn={item.txn} names={names} today={grouped ? null : today} />
+                ) : (
+                  <SplitRow split={item.split} names={names} today={grouped ? null : today} />
+                )}
               </li>
             ))}
           </ul>
         </section>
       ))}
     </div>
+  );
+}
+
+function itemKey(item: ListItem) {
+  return item.kind === "one" ? item.txn.id : `split-${item.split.splitId}`;
+}
+
+/** One row for a whole split bill: your share is the spending, the bill total underneath. */
+function SplitRow({
+  split,
+  names,
+  today,
+}: {
+  split: SplitBill;
+  names: Map<string, string>;
+  today: string | null;
+}) {
+  const info = categoryInfo("expense", split.mine?.category ?? "family");
+  const people = split.others.length;
+  const detail = [
+    split.mine ? info.label : null,
+    names.get(split.accountId) ?? "Removed wallet",
+    `split with ${people}`,
+  ];
+  if (today) detail.unshift(formatRelativeDay(split.occurredOn, today));
+
+  return (
+    <Link
+      href={`/activity/split/${split.splitId}`}
+      className="-mx-2 flex items-center gap-3 rounded-2xl px-2 py-2.5 hover:bg-mint"
+    >
+      <span className={`flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[14px] ${info.tint}`}>
+        <PathIcon d={info.icon} size={21} />
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="truncate text-[15px] font-bold">{split.title}</span>
+        <span className="truncate text-[13px] text-muted">{detail.filter(Boolean).join(" · ")}</span>
+      </span>
+      <span className="flex shrink-0 flex-col items-end">
+        <span className="font-display text-[17px] font-semibold">
+          {split.mine ? `−${formatPeso(split.mine.amount)}` : formatPeso(0)}
+        </span>
+        <span className="text-xs text-muted">of {formatPeso(split.total)}</span>
+      </span>
+      <span className="sr-only">Split bill, see breakdown</span>
+    </Link>
   );
 }
 
