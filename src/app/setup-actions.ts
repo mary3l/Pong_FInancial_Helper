@@ -20,6 +20,8 @@ export type PaydayInput = {
   schedule: Schedule | null;
   /** Net pay per payday, if the user shares it. */
   amount: number | null;
+  /** The amount is an estimate (the payroll calculator sets this). */
+  amountVaries?: boolean;
   accountId: string | null;
   bills: BillInput[];
 };
@@ -59,6 +61,7 @@ export async function savePaydayAndBills(input: PaydayInput): Promise<SetupResul
       kind: "payday",
       name: "Payday",
       amount: input.amount === null ? null : roundCents(input.amount),
+      amount_varies: Boolean(input.amountVaries),
       account_id: input.accountId,
       frequency: input.schedule.frequency,
       day1: input.schedule.day1,
@@ -67,15 +70,20 @@ export async function savePaydayAndBills(input: PaydayInput): Promise<SetupResul
     if (error) return failed;
   }
 
-  // Only monthly bills are edited here; Plan › Scheduled handles the rest.
+  // Only monthly bills are edited here; Plan › Scheduled handles the rest,
+  // and the payroll calculator its own contributions (payroll_key, 0013).
+  // "*" so this works before 0013 is run, too.
   const existing = await supabase
     .from("recurring_items")
-    .select("id")
+    .select("*")
     .eq("kind", "bill")
     .eq("frequency", "monthly");
   if (existing.error) return failed;
   const keep = new Set(input.bills.flatMap((b) => (b.id ? [b.id] : [])));
-  const removed = existing.data.map((b) => b.id).filter((id) => !keep.has(id));
+  const removed = existing.data
+    .filter((b) => !b.payroll_key)
+    .map((b) => b.id)
+    .filter((id) => !keep.has(id));
   if (removed.length) {
     const { error } = await supabase.from("recurring_items").delete().in("id", removed);
     if (error) return failed;

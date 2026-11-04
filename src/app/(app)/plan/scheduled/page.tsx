@@ -27,13 +27,14 @@ async function Scheduled() {
   // Read the clock only at request time (Cache Components).
   await connection();
   const today = getToday();
-  const { accounts, recurring, planned, items } = await getScheduled(today);
+  const { accounts, recurring, planned, items, payroll } = await getScheduled(today);
   return (
     <ScheduledManager
       accounts={accounts}
       recurring={recurring}
       planned={planned.filter((p) => p.dueOn >= today || !p.transactionId)}
       items={items}
+      payroll={payroll}
       today={today}
     />
   );

@@ -14,6 +14,7 @@ import {
   type TransactionType,
   type WalletPurpose,
 } from "@/lib/money";
+import { paydayAmounts, type PayrollRecords } from "@/lib/payroll";
 import { personItems, type EntryKind, type Person } from "@/lib/people";
 import type { Frequency } from "@/lib/schedule";
 import { createClient } from "@/lib/supabase/server";
@@ -69,6 +70,8 @@ export type RecurringItem = {
   day1: number;
   day2: number | null;
   endsOn: string | null;
+  /** Set on SSS, PhilHealth and Pag-IBIG bills the payroll calculator manages. */
+  payrollKey: string | null;
 };
 
 export type BillPayment = {
@@ -87,6 +90,8 @@ export type PlannedExpense = {
   dueOn: string;
   accountId: string | null;
   transactionId: string | null;
+  /** Set on income tax payments the payroll calculator manages ("2026-Q3"). */
+  payrollKey: string | null;
 };
 
 export type Budget = { id: string; category: string; amount: number };
@@ -212,14 +217,31 @@ export async function getLastInterest(): Promise<Map<string, string>> {
   return last;
 }
 
+const RECURRING_COLUMNS = "id, kind, name, amount, amount_varies, account_id, category, frequency, day1, day2, ends_on";
+
+type RecurringRow = {
+  id: string;
+  kind: RecurringItem["kind"];
+  name: string;
+  amount: number | string | null;
+  amount_varies: boolean;
+  account_id: string | null;
+  category: string | null;
+  frequency: Frequency;
+  day1: number;
+  day2: number | null;
+  ends_on: string | null;
+  payroll_key?: string | null;
+};
+
 export async function getRecurringItems(): Promise<RecurringItem[]> {
   const supabase = await db();
-  const { data, error } = await supabase
-    .from("recurring_items")
-    .select("id, kind, name, amount, amount_varies, account_id, category, frequency, day1, day2, ends_on")
-    .order("created_at");
+  const select = (columns: string) => supabase.from("recurring_items").select(columns).order("created_at");
+  // 42703: migration 0013 (payroll_key) hasn't been run yet.
+  const first = await select(`${RECURRING_COLUMNS}, payroll_key`);
+  const { data, error } = first.error?.code === "42703" ? await select(RECURRING_COLUMNS) : first;
   if (error) throw dbError(error);
-  return data.map((r) => ({
+  return (data as unknown as RecurringRow[]).map((r) => ({
     id: r.id,
     kind: r.kind,
     name: r.name,
@@ -231,6 +253,7 @@ export async function getRecurringItems(): Promise<RecurringItem[]> {
     day1: r.day1,
     day2: r.day2,
     endsOn: r.ends_on,
+    payrollKey: r.payroll_key ?? null,
   }));
 }
 
@@ -252,13 +275,18 @@ export async function getBillPayments(from: string): Promise<BillPayment[]> {
 /** Planned items due on or after `from`, plus any still unlogged from before. */
 export async function getPlannedExpenses(from: string): Promise<PlannedExpense[]> {
   const supabase = await db();
-  const { data, error } = await supabase
-    .from("planned_expenses")
-    .select("id, type, name, amount, category, due_on, account_id, transaction_id")
-    .or(`due_on.gte.${from},transaction_id.is.null`)
-    .order("due_on");
+  const base = "id, type, name, amount, category, due_on, account_id, transaction_id";
+  const select = (columns: string) =>
+    supabase
+      .from("planned_expenses")
+      .select(columns)
+      .or(`due_on.gte.${from},transaction_id.is.null`)
+      .order("due_on");
+  // 42703: migration 0013 (payroll_key) hasn't been run yet.
+  const first = await select(`${base}, payroll_key`);
+  const { data, error } = first.error?.code === "42703" ? await select(base) : first;
   if (error) throw dbError(error);
-  return data.map((p) => ({
+  return (data as unknown as PlannedRow[]).map((p) => ({
     id: p.id,
     type: p.type,
     name: p.name,
@@ -267,7 +295,96 @@ export async function getPlannedExpenses(from: string): Promise<PlannedExpense[]
     dueOn: p.due_on,
     accountId: p.account_id,
     transactionId: p.transaction_id,
+    payrollKey: p.payroll_key ?? null,
   }));
+}
+
+type PlannedRow = {
+  id: string;
+  type: PlannedExpense["type"];
+  name: string;
+  amount: number | string;
+  category: string;
+  due_on: string;
+  account_id: string | null;
+  transaction_id: string | null;
+  payroll_key?: string | null;
+};
+
+/**
+ * The payroll calculator's settings, saved days and overtime from Jan 1 last
+ * year (enough for this year's tax). Null when it isn't set up; "missing"
+ * while migration 0013 hasn't been run.
+ */
+export async function getPayroll(today: string): Promise<PayrollRecords | null | "missing"> {
+  const supabase = await db();
+  return readPayroll(supabase, today);
+}
+
+/** getPayroll with a client you already have, e.g. in a Server Action. */
+export async function readPayroll(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  today: string,
+): Promise<PayrollRecords | null | "missing"> {
+  const from = `${Number(today.slice(0, 4)) - 1}-01-01`;
+  const [s, d, o] = await Promise.all([
+    supabase.from("payroll_settings").select("*").maybeSingle(),
+    supabase
+      .from("payroll_days")
+      .select("work_date, status, leave_type, note, time_in")
+      .gte("work_date", from)
+      .order("work_date"),
+    supabase
+      .from("payroll_overtime")
+      .select("work_date, starts_at, ends_at")
+      .gte("work_date", from)
+      .order("work_date")
+      .order("starts_at"),
+  ]);
+  if (s.error?.code === "PGRST205") return "missing";
+  if (s.error) throw dbError(s.error);
+  if (d.error) throw dbError(d.error);
+  if (o.error) throw dbError(o.error);
+  if (!s.data) return null;
+  const row = s.data;
+  return {
+    settings: {
+      dailyRate: Number(row.daily_rate),
+      hoursPerDay: Number(row.hours_per_day),
+      startTime: String(row.start_time).slice(0, 5),
+      overtimeRate: Number(row.overtime_rate),
+      monthlyBase: row.monthly_base === null ? null : Number(row.monthly_base),
+      startedOn: row.started_on,
+      paySss: row.pay_sss,
+      payPhilhealth: row.pay_philhealth,
+      payPagibig: row.pay_pagibig,
+      payTax: row.pay_tax,
+    },
+    days: d.data.map((day) => ({
+      date: day.work_date,
+      status: day.status,
+      leaveType: day.leave_type,
+      note: day.note,
+      timeIn: day.time_in ? String(day.time_in).slice(0, 5) : null,
+    })),
+    overtime: o.data.map((ot) => ({
+      date: ot.work_date,
+      start: String(ot.starts_at).slice(0, 5),
+      end: String(ot.ends_at).slice(0, 5),
+    })),
+  };
+}
+
+/**
+ * Each payday's own amount when the payroll calculator is set up. It needs
+ * pay twice a month: one cutoff per payday.
+ */
+async function payrollAmounts(recurring: RecurringItem[], today: string, until: string) {
+  const payday = recurring.find((r) => r.kind === "payday");
+  if (payday?.frequency !== "twice_monthly") return undefined;
+  const payroll = await getPayroll(today);
+  if (!payroll || payroll === "missing") return undefined;
+  return paydayAmounts(payroll, payday, today, until, today);
 }
 
 export async function getBudgets(): Promise<Budget[]> {
@@ -444,6 +561,7 @@ export async function getPlanInputs(today: string, days: number): Promise<PlanIn
   ]);
   const installments = installmentInputs(plans);
   const until = addDays(today, days);
+  const paydayAmounts = await payrollAmounts(recurring, today, until);
   return {
     accounts,
     inWallets: roundCents(
@@ -457,7 +575,7 @@ export async function getPlanInputs(today: string, days: number): Promise<PlanIn
     payday: recurring.find((r) => r.kind === "payday") ?? null,
     people,
     items: sortItems([
-      ...scheduledItems({ recurring, billPayments, planned, installments }, today, until),
+      ...scheduledItems({ recurring, billPayments, planned, installments, paydayAmounts }, today, until),
       ...personItems(people, today, until),
     ]),
   };
@@ -472,8 +590,10 @@ export async function getScheduled(today: string) {
     getPlannedExpenses(today),
   ]);
   // 45 days covers the next occurrence of every schedule.
-  const items = scheduledItems({ recurring, billPayments, planned }, today, addDays(today, 45));
-  return { accounts, recurring, planned, items };
+  const until = addDays(today, 45);
+  const paydayAmounts = await payrollAmounts(recurring, today, until);
+  const items = scheduledItems({ recurring, billPayments, planned, paydayAmounts }, today, until);
+  return { accounts, recurring, planned, items, payroll: paydayAmounts !== undefined };
 }
 
 const TXN_BASE = "id, type, amount, account_id, to_account_id, category, note, occurred_on";

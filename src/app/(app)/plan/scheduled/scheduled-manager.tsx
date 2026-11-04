@@ -52,6 +52,8 @@ type Row = {
   /** The next occurrence, if one falls in the next 45 days. */
   next: ForecastItem | null;
   payday: boolean;
+  /** The payroll calculator works this one out. */
+  fromPayroll: boolean;
   input: ScheduledInput;
 };
 
@@ -60,12 +62,15 @@ export function ScheduledManager({
   recurring,
   planned,
   items,
+  payroll,
   today,
 }: {
   accounts: Account[];
   recurring: RecurringItem[];
   planned: PlannedExpense[];
   items: ForecastItem[];
+  /** The payroll calculator works out each payday. */
+  payroll: boolean;
   today: string;
 }) {
   const [editing, setEditing] = useState<string | null>(null);
@@ -77,16 +82,21 @@ export function ScheduledManager({
     ...recurring.map((r): Row => {
       const flow = r.kind === "bill" ? "out" : "in";
       const category = r.category ?? (r.kind === "bill" ? "bills" : "salary");
+      const payday = r.kind === "payday";
+      const next = nextOf(r.id);
+      // With the payroll calculator, each payday has its own amount: show the next one.
+      const fromPayroll = (payday && payroll) || r.payrollKey !== null;
       return {
         ref: { table: "recurring", id: r.id },
         flow,
-        name: r.kind === "payday" ? "Payday" : r.name,
-        amount: r.amount,
+        name: payday ? "Payday" : r.name,
+        amount: payday && payroll && next ? next.amount : r.amount,
         category,
         accountId: r.accountId,
         when: describeSchedule(r) + (r.endsOn ? ` until ${formatShortDay(r.endsOn, today)}` : ""),
-        next: nextOf(r.id),
-        payday: r.kind === "payday",
+        next,
+        payday,
+        fromPayroll,
         input: {
           flow,
           name: r.name,
@@ -114,6 +124,7 @@ export function ScheduledManager({
         when: p.dueOn < today && !p.transactionId ? `Late, was ${formatShortDay(p.dueOn, today)}` : `Once · ${formatShortDay(p.dueOn, today)}`,
         next: nextOf(p.id),
         payday: false,
+        fromPayroll: p.payrollKey !== null,
         input: {
           flow,
           name: p.name,
@@ -252,9 +263,13 @@ function ItemRow({
     row.when,
     next && !row.input.date && `next ${formatRelativeDay(next.dueOn, today)}`,
     wallet && `${row.flow === "in" ? "to" : "from"} ${wallet.name}`,
+    row.fromPayroll && "from payroll calculator",
   ]
     .filter(Boolean)
     .join(" · ");
+  // A payroll payday is an estimate until its cutoff is saved and over.
+  const estimate = row.payday && row.fromPayroll ? (next?.estimate ?? true) : row.input.amountVaries;
+  const linkClass = "flex h-10 items-center rounded-full px-3 text-sm font-extrabold text-sea-dark hover:bg-mint";
 
   return (
     <div className="flex flex-wrap items-center gap-3">
@@ -267,15 +282,17 @@ function ItemRow({
       </span>
       <span className={`font-display text-[17px] font-semibold ${row.flow === "in" ? "text-sea" : ""}`}>
         {row.amount === null ? "₱?" : `${row.flow === "in" ? "+" : "−"}${formatPeso(row.amount)}`}
-        {row.input.amountVaries && <span className="text-xs font-bold text-muted"> est.</span>}
+        {estimate && <span className="text-xs font-bold text-muted"> est.</span>}
       </span>
       <div className="flex w-full items-center justify-end gap-2 sm:w-auto">
         {next && soon && <LogButton item={next} />}
         {row.payday ? (
-          <Link
-            href="/setup/payday?from=settings"
-            className="flex h-10 items-center rounded-full px-3 text-sm font-extrabold text-sea-dark hover:bg-mint"
-          >
+          <Link href="/setup/payday?from=settings" className={linkClass}>
+            Edit
+          </Link>
+        ) : row.fromPayroll ? (
+          // SSS, PhilHealth, Pag-IBIG and tax are worked out by the payroll calculator.
+          <Link href="/payroll" aria-label={`Edit ${row.name} in the payroll calculator`} className={linkClass}>
             Edit
           </Link>
         ) : (

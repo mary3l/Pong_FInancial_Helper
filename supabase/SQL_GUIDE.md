@@ -292,6 +292,34 @@ where table_name = 'transactions' and column_name = 'split_id';
 
 Expect `1`.
 
+## Step 13 · Payroll calculator
+
+File: `migrations/0013_payroll.sql`
+
+Lets Plan › Scheduled › **Payroll calculator** work out each payday from your daily
+rate, the days you worked, late minutes and overtime, and keep your SSS, PhilHealth,
+Pag-IBIG and 8% income tax in Money going out.
+
+- `payroll_settings`: your daily rate, hours per day, start time, overtime rate and
+  which contributions you pay.
+- `payroll_days`: each day of a saved cutoff (worked, leave with its reason, or off,
+  and your time in).
+- `payroll_overtime`: overtime entries, by time.
+- `recurring_items.payroll_key` and `planned_expenses.payroll_key`: mark the bills the
+  calculator manages.
+
+Until you run this, the app still works; the Payroll calculator screen asks you to run
+this step.
+
+**Check**
+
+```sql
+select count(*) from information_schema.tables
+where table_schema = 'public' and table_name in ('payroll_settings', 'payroll_days', 'payroll_overtime');
+```
+
+Expect `3`.
+
 ---
 
 ## All done?
@@ -316,7 +344,8 @@ select
   exists (select 1 from information_schema.columns
           where table_name = 'accounts' and column_name = 'interest_payout') as step_11,
   exists (select 1 from information_schema.columns
-          where table_name = 'transactions' and column_name = 'split_id') as step_12;
+          where table_name = 'transactions' and column_name = 'split_id') as step_12,
+  to_regclass('public.payroll_settings') is not null        as step_13;
 ```
 
 The first `false` is the step to run next.

@@ -24,6 +24,8 @@ export const EXPENSE_CATEGORIES: Category[] = [
   { key: "gifts", label: "Gifts", tint: "bg-coral-tint", icon: "M3 8h18v4H3zM5 12v9h14v-9M12 8v13M12 8S10 3 7.5 4.5 9 8 12 8zM12 8s2-5 4.5-3.5S15 8 12 8z" },
   // BNPL fees and loan interest: the only part of an installment that's spending.
   { key: "fees", label: "Fees & interest", tint: "bg-coral-tint", icon: "M19 5 5 19M7 7h.01M17 17h.01M7.5 9a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM16.5 18a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z" },
+  // SSS, PhilHealth, Pag-IBIG and BIR: what the payroll calculator schedules.
+  { key: "gov", label: "Gov't & tax", tint: "bg-sky-tint", icon: "M3 10 12 4l9 6M5 10v9M19 10v9M9.5 10v9M14.5 10v9M3 21h18" },
   { key: "other", label: "Other", tint: "bg-line-soft", icon: "M5 12h.01M12 12h.01M19 12h.01" },
 ];
 

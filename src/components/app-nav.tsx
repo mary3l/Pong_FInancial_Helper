@@ -6,6 +6,7 @@ import { Suspense } from "react";
 import { Pong } from "@/components/pong";
 import {
   ActivityIcon,
+  CalculatorIcon,
   GroceryIcon,
   HomeIcon,
   MoneyIcon,
@@ -148,6 +149,18 @@ function SidebarPanel({ isActive }: { isActive: IsActive }) {
         >
           <GroceryIcon size={22} />
           Grocery mode
+        </Link>
+        <Link
+          href="/payroll"
+          aria-current={isActive("/payroll") ? "page" : undefined}
+          className={`flex h-[46px] items-center gap-3 rounded-[14px] px-3.5 text-[15px] ${
+            isActive("/payroll")
+              ? "bg-sea-tint font-extrabold text-sea-dark"
+              : "font-bold text-ink hover:bg-mint"
+          }`}
+        >
+          <CalculatorIcon size={22} />
+          Payroll calculator
         </Link>
       </nav>
     </aside>

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { finishSetup, savePaydayAndBills, type BillInput } from "@/app/setup-actions";
@@ -36,12 +37,15 @@ export function PaydayForm({
   payday,
   bills,
   editing,
+  payroll,
 }: {
   accounts: Account[];
   payday: RecurringItem | null;
   bills: RecurringItem[];
   /** True when opened from Settings rather than first-run setup. */
   editing: boolean;
+  /** The payroll calculator works out each payday. */
+  payroll: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -128,6 +132,8 @@ export function PaydayForm({
       const result = await savePaydayAndBills({
         schedule,
         amount,
+        // Keep "estimate" while the amount is the one the calculator saved.
+        amountVaries: Boolean(payday?.amountVaries) && amount === payday?.amount,
         accountId: schedule ? payAccount || null : null,
         bills: billInputs,
       });
@@ -197,13 +203,28 @@ export function PaydayForm({
           </p>
         ) : (
           <div className="flex flex-col gap-3 sm:flex-row">
-            <div className="flex flex-1 flex-col gap-1">
-              <label htmlFor="net-pay" className="text-sm font-bold">Net pay per payday <span className="font-semibold text-muted">(optional)</span></label>
-              <div className="relative">
-                <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">₱</span>
-                <AmountInput id="net-pay" value={netPay} onChange={setNetPay} placeholder="0.00" className={`${FIELD_CLASS} w-full pl-8`} />
+            {payroll && kind === "twice_monthly" ? (
+              <div className="flex flex-1 flex-col gap-1">
+                <span className="text-sm font-bold">Pay per payday</span>
+                <p className="text-sm leading-relaxed text-muted">
+                  Worked out from the days you work.{" "}
+                  <Link href="/payroll" className="font-extrabold text-sea-dark underline">Payroll calculator</Link>
+                </p>
               </div>
-            </div>
+            ) : (
+              <div className="flex flex-1 flex-col gap-1">
+                <label htmlFor="net-pay" className="text-sm font-bold">Net pay per payday <span className="font-semibold text-muted">(optional)</span></label>
+                <div className="relative">
+                  <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">₱</span>
+                  <AmountInput id="net-pay" value={netPay} onChange={setNetPay} placeholder="0.00" className={`${FIELD_CLASS} w-full pl-8`} />
+                </div>
+                {editing && kind === "twice_monthly" && (
+                  <Link href="/payroll" className="text-sm font-extrabold text-sea-dark hover:underline">
+                    Paid a daily rate? Use the payroll calculator
+                  </Link>
+                )}
+              </div>
+            )}
             {accounts.length > 0 && (
               <div className="flex flex-1 flex-col gap-1">
                 <label htmlFor="pay-account" className="text-sm font-bold">Goes to</label>

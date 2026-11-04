@@ -1,5 +1,6 @@
 import { Suspense } from "react";
-import { getAccounts, getRecurringItems } from "@/lib/data";
+import { getAccounts, getPayroll, getRecurringItems } from "@/lib/data";
+import { today as getToday } from "@/lib/dates";
 import { SetupHeader } from "../setup-header";
 import { PaydayForm } from "./payday-form";
 
@@ -22,6 +23,7 @@ async function Payday({ searchParams }: Pick<PageProps<"/setup/payday">, "search
     getAccounts(),
     getRecurringItems(),
   ]);
+  const payroll = await getPayroll(getToday());
   const editing = from === "settings";
 
   return (
@@ -35,8 +37,9 @@ async function Payday({ searchParams }: Pick<PageProps<"/setup/payday">, "search
       <PaydayForm
         accounts={accounts}
         payday={items.find((i) => i.kind === "payday") ?? null}
-        bills={items.filter((i) => i.kind === "bill" && i.frequency === "monthly")}
+        bills={items.filter((i) => i.kind === "bill" && i.frequency === "monthly" && !i.payrollKey)}
         editing={editing}
+        payroll={Boolean(payroll && payroll !== "missing")}
       />
     </>
   );

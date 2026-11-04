@@ -68,6 +68,18 @@ describe("scheduled items", () => {
     ]);
   });
 
+  it("gives each payday its own amount from the payroll calculator", () => {
+    const withPayroll = scheduledItems(
+      inputs({ paydayAmounts: { "2026-11-15": { amount: 8000, estimate: false }, "2026-11-30": { amount: 8800, estimate: true } } }),
+      TODAY,
+      "2026-12-02",
+    ).filter((i) => i.kind === "payday");
+    expect(withPayroll.map((i) => [i.dueOn, i.amount, i.estimate])).toEqual([
+      ["2026-11-15", 8000, false],
+      ["2026-11-30", 8800, true],
+    ]);
+  });
+
   it("stops recurring items after their end date", () => {
     expect(items.filter((i) => i.id === "allowance").at(-1)!.dueOn).toBe("2026-11-16");
   });

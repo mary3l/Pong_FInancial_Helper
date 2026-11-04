@@ -55,6 +55,11 @@ export type ScheduleInputs = {
     accountId: string | null;
     transactionId: string | null;
   }[];
+  /**
+   * Payroll calculator: each payday's own amount by date, replacing the
+   * payday's saved amount.
+   */
+  paydayAmounts?: Record<string, { amount: number; estimate: boolean }>;
   /** BNPL and loan payments (Phase 3). */
   installments?: {
     id: string;
@@ -79,7 +84,7 @@ export function recurringCategory(r: { kind: "payday" | "bill" | "income"; categ
  * included too, since they're still expected.
  */
 export function scheduledItems(
-  { recurring, billPayments, planned, installments = [] }: ScheduleInputs,
+  { recurring, billPayments, planned, installments = [], paydayAmounts = {} }: ScheduleInputs,
   from: string,
   until: string,
 ): ForecastItem[] {
@@ -89,17 +94,18 @@ export function scheduledItems(
   for (const r of recurring) {
     const end = r.endsOn && r.endsOn < until ? addDays(r.endsOn, 1) : until;
     for (const date of occurrences(r, from, end)) {
+      const payroll = r.kind === "payday" ? paydayAmounts[date] : undefined;
       items.push({
         key: `${r.kind}|${r.id}|${date}`,
         kind: r.kind,
         flow: r.kind === "bill" ? "out" : "in",
         id: r.id,
         name: r.kind === "payday" ? "Payday" : r.name,
-        amount: r.amount,
+        amount: payroll ? payroll.amount : r.amount,
         dueOn: date,
         accountId: r.accountId,
         category: recurringCategory(r),
-        estimate: r.amountVaries,
+        estimate: payroll ? payroll.estimate : r.amountVaries,
         transactionId: logged.get(`${r.id}|${date}`) ?? null,
       });
     }
