@@ -71,6 +71,43 @@ export async function savePayrollSettings(input: PayrollSettings): Promise<Payro
   return sync(supabase);
 }
 
+export type ContributionAmounts = Pick<PayrollSettings, "sssAmount" | "philhealthAmount" | "pagibigAmount">;
+
+/**
+ * What your company actually takes for SSS, PhilHealth and Pag-IBIG. Null
+ * goes back to the calculated amount. Updates the bills in Money going out.
+ */
+export async function saveContributionAmounts(input: ContributionAmounts): Promise<PayrollResult> {
+  const amounts = [input.sssAmount, input.philhealthAmount, input.pagibigAmount];
+  if (amounts.some((a) => a !== null && !(typeof a === "number" && a > 0 && a <= MAX_AMOUNT))) {
+    return { error: "Enter an amount above ₱0, or leave it blank to use the calculated one." };
+  }
+
+  const supabase = await signedInClient();
+  if (!supabase) return { error: SIGNED_OUT_ERROR };
+
+  const own = (a: number | null) => (a === null ? null : roundCents(a));
+  const { data, error } = await supabase
+    .from("payroll_settings")
+    .update({
+      sss_amount: own(input.sssAmount),
+      philhealth_amount: own(input.philhealthAmount),
+      pagibig_amount: own(input.pagibigAmount),
+      updated_at: new Date().toISOString(),
+    })
+    .not("user_id", "is", null)
+    .select("user_id");
+  if (error?.code === "PGRST205") return MISSING;
+  // PostgREST says PGRST204 for a column it doesn't know, Postgres 42703.
+  if (error?.code === "PGRST204" || error?.code === "42703") {
+    return { error: "To use your own amounts, run step 18 in supabase/SQL_GUIDE.md first." };
+  }
+  if (error) return FAILED;
+  if (!data.length) return { error: "Set up your pay first." };
+
+  return sync(supabase);
+}
+
 export type CutoffInput = {
   /** The cutoff's first day: the 1st or the 16th. */
   start: string;

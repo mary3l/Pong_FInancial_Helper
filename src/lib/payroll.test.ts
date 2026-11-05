@@ -30,6 +30,9 @@ const settings: PayrollSettings = {
   payPhilhealth: true,
   payPagibig: true,
   payTax: true,
+  sssAmount: null,
+  philhealthAmount: null,
+  pagibigAmount: null,
 };
 
 const NOV_1 = { start: "2026-11-01", end: "2026-11-15" };
@@ -128,9 +131,19 @@ describe("contributions", () => {
   it("only lists the ones you pay", () => {
     // ₱800 × 22 = ₱17,600 a month.
     expect(contributions({ ...settings, payPagibig: false })).toEqual([
-      { key: "sss", name: "SSS contribution", amount: 2625 },
-      { key: "philhealth", name: "PhilHealth contribution", amount: 880 },
+      { key: "sss", name: "SSS contribution", amount: 2625, custom: false },
+      { key: "philhealth", name: "PhilHealth contribution", amount: 880, custom: false },
     ]);
+  });
+
+  it("uses the amounts you entered over the calculated ones", () => {
+    expect(contributions({ ...settings, sssAmount: 1125, pagibigAmount: 200 })).toEqual([
+      { key: "sss", name: "SSS contribution", amount: 1125, custom: true },
+      { key: "philhealth", name: "PhilHealth contribution", amount: 880, custom: false },
+      { key: "pagibig", name: "Pag-IBIG contribution", amount: 200, custom: true },
+    ]);
+    // Turned off still means off.
+    expect(contributions({ ...settings, sssAmount: 1125, paySss: false }).map((c) => c.key)).toEqual(["philhealth", "pagibig"]);
   });
 });
 

@@ -342,6 +342,28 @@ where table_name = 'transactions' and column_name = 'occurred_time';
 
 Expect `1`.
 
+## Step 18 · Your own contribution amounts
+
+File: `migrations/0018_contribution_amounts.sql`
+
+Lets the Payroll calculator use the SSS, PhilHealth and Pag-IBIG amounts your company
+actually takes (say, while you're not yet regular) instead of the standard rates.
+
+- `payroll_settings.sss_amount`, `philhealth_amount`, `pagibig_amount`: what you
+  entered. Empty means calculated.
+
+Until you run this, the calculator uses the standard rates; saving your own amounts
+asks you to run this step.
+
+**Check**
+
+```sql
+select count(*) from information_schema.columns
+where table_name = 'payroll_settings' and column_name in ('sss_amount', 'philhealth_amount', 'pagibig_amount');
+```
+
+Expect `3`.
+
 ---
 
 ## All done?
@@ -367,7 +389,9 @@ select
           where table_name = 'accounts' and column_name = 'interest_payout') as step_11,
   exists (select 1 from information_schema.columns
           where table_name = 'transactions' and column_name = 'split_id') as step_12,
-  to_regclass('public.payroll_settings') is not null        as step_13;
+  to_regclass('public.payroll_settings') is not null        as step_13,
+  exists (select 1 from information_schema.columns
+          where table_name = 'payroll_settings' and column_name = 'sss_amount') as step_18;
 ```
 
 The first `false` is the step to run next.

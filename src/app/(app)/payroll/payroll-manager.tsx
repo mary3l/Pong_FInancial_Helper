@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
-import { saveCutoff, savePayrollSettings } from "@/app/payroll-actions";
+import { saveContributionAmounts, saveCutoff, savePayrollSettings } from "@/app/payroll-actions";
 import { AmountInput } from "@/components/amount-input";
 import { FIELD_CLASS } from "@/components/choice-chip";
 import { ChevronIcon } from "@/components/icons";
@@ -11,6 +11,7 @@ import { formatPeso, parseAmount } from "@/lib/money";
 import {
   LEAVE_TYPES,
   RATES,
+  calculatedContributions,
   contributions,
   cutoffPay,
   daysFor,
@@ -46,6 +47,9 @@ const DEFAULT_SETTINGS: PayrollSettings = {
   payPhilhealth: true,
   payPagibig: true,
   payTax: true,
+  sssAmount: null,
+  philhealthAmount: null,
+  pagibigAmount: null,
 };
 
 export function PayrollManager({
@@ -198,6 +202,10 @@ function SettingsForm({ initial, isNew, onClose }: { initial: PayrollSettings; i
       monthlyBase: monthly,
       startedOn: startedOn || null,
       ...pays,
+      // Saved on their own, from What you pay yourself.
+      sssAmount: initial.sssAmount,
+      philhealthAmount: initial.philhealthAmount,
+      pagibigAmount: initial.pagibigAmount,
     };
     startTransition(async () => {
       const result = await savePayrollSettings(input);
@@ -543,33 +551,56 @@ function Line({ label, value, muted, coral }: { label: string; value: string; mu
 
 function SelfPaidCard({ records, today }: { records: PayrollRecords; today: string }) {
   const { settings } = records;
+  const [editing, setEditing] = useState(false);
   const monthly = contributions(settings);
   const taxes = settings.payTax ? upcomingTaxPayments(records, today) : [];
   const monthlyTotal = monthly.reduce((sum, c) => sum + c.amount, 0);
+  const allCustom = monthly.length > 0 && monthly.every((c) => c.custom);
 
   return (
-    <Card title="What you pay yourself">
+    <Card
+      title="What you pay yourself"
+      aside={
+        monthly.length > 0 &&
+        !editing && (
+          <button type="button" onClick={() => setEditing(true)} className="h-10 rounded-full px-3 text-sm font-extrabold text-sea-dark hover:bg-mint">
+            Edit amounts
+          </button>
+        )
+      }
+    >
       <p className="text-sm text-muted">
         These are in{" "}
         <Link href="/plan/scheduled" className="font-extrabold text-sea-dark underline">Money going out</Link>, so your
         forecast and Safe to spend set the money aside. They update when you save your pay or a cutoff.
       </p>
 
-      {monthly.length > 0 && (
-        <div className="flex flex-col gap-1.5">
-          <h3 className="text-sm font-extrabold">
-            Every {RATES.contributionDay}th · based on {formatPeso(monthlyBase(settings))} a month
-          </h3>
-          <dl className="flex flex-col gap-1.5 text-[15px]">
-            {monthly.map((c) => (
-              <Line key={c.key} label={c.name} value={formatPeso(c.amount)} />
-            ))}
-            <div className="flex items-baseline justify-between gap-3 border-t-2 border-line-soft pt-1.5">
-              <dt className="font-extrabold">Each month</dt>
-              <dd className="font-extrabold">{formatPeso(monthlyTotal)}</dd>
-            </div>
-          </dl>
-        </div>
+      {editing ? (
+        <AmountsForm settings={settings} onClose={() => setEditing(false)} />
+      ) : (
+        monthly.length > 0 && (
+          <div className="flex flex-col gap-1.5">
+            <h3 className="text-sm font-extrabold">
+              Every {RATES.contributionDay}th ·{" "}
+              {allCustom ? "the amounts you entered" : `based on ${formatPeso(monthlyBase(settings))} a month`}
+            </h3>
+            <dl className="flex flex-col gap-1.5 text-[15px]">
+              {monthly.map((c) => (
+                <div key={c.key} className="flex items-baseline justify-between gap-3">
+                  <dt>
+                    {c.name}
+                    {c.custom && !allCustom && <span className="block text-xs text-muted">Your amount</span>}
+                  </dt>
+                  <dd className="font-bold">{formatPeso(c.amount)}</dd>
+                </div>
+              ))}
+              <div className="flex items-baseline justify-between gap-3 border-t-2 border-line-soft pt-1.5">
+                <dt className="font-extrabold">Each month</dt>
+                <dd className="font-extrabold">{formatPeso(monthlyTotal)}</dd>
+              </div>
+            </dl>
+          </div>
+        )
       )}
 
       {settings.payTax && (
@@ -596,5 +627,85 @@ function SelfPaidCard({ records, today }: { records: PayrollRecords; today: stri
 
       {!monthly.length && !settings.payTax && <p className="text-[15px] text-muted">You haven&apos;t picked any. Edit your pay to add them.</p>}
     </Card>
+  );
+}
+
+const AMOUNT_FIELDS = [
+  { key: "sss", field: "sssAmount", on: "paySss", label: "SSS" },
+  { key: "philhealth", field: "philhealthAmount", on: "payPhilhealth", label: "PhilHealth" },
+  { key: "pagibig", field: "pagibigAmount", on: "payPagibig", label: "Pag-IBIG" },
+] as const;
+
+/** Your company's own amounts. Blank uses the calculated one. */
+function AmountsForm({ settings, onClose }: { settings: PayrollSettings; onClose: () => void }) {
+  const calculated = calculatedContributions(settings);
+  const fields = AMOUNT_FIELDS.filter((f) => settings[f.on]);
+  const [values, setValues] = useState(() =>
+    Object.fromEntries(AMOUNT_FIELDS.map((f) => [f.field, settings[f.field] === null ? "" : String(settings[f.field])])) as Record<
+      (typeof AMOUNT_FIELDS)[number]["field"],
+      string
+    >,
+  );
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  function save(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const parsed = { sssAmount: null, philhealthAmount: null, pagibigAmount: null } as Record<
+      (typeof AMOUNT_FIELDS)[number]["field"],
+      number | null
+    >;
+    for (const f of AMOUNT_FIELDS) {
+      const text = values[f.field].trim();
+      if (!text) continue;
+      const amount = parseAmount(text);
+      if (!(amount > 0)) {
+        setError(`Check the ${f.label} amount, or leave it blank to use the calculated one.`);
+        return;
+      }
+      parsed[f.field] = amount;
+    }
+    startTransition(async () => {
+      const result = await saveContributionAmounts(parsed);
+      if (result.error) setError(result.error);
+      else onClose();
+    });
+  }
+
+  return (
+    <form onSubmit={save} className="flex flex-col gap-4">
+      <p className="text-[15px]">
+        Enter what your company actually takes each month. Leave one blank to use the standard rate, based on{" "}
+        {formatPeso(monthlyBase(settings))} a month.
+      </p>
+      <div className="grid gap-3 sm:grid-cols-3">
+        {fields.map((f) => (
+          <div key={f.key} className="flex flex-col gap-1">
+            <label htmlFor={`own-${f.key}`} className="text-sm font-bold">{f.label}</label>
+            <div className="relative">
+              <span aria-hidden="true" className="absolute top-1/2 left-4 -translate-y-1/2 font-bold text-muted">₱</span>
+              <AmountInput
+                id={`own-${f.key}`}
+                value={values[f.field]}
+                onChange={(v) => setValues((vs) => ({ ...vs, [f.field]: v }))}
+                placeholder={calculated[f.key].toFixed(2)}
+                className={`${FIELD_CLASS} w-full pl-8`}
+              />
+            </div>
+            <span className="text-xs text-muted">Blank: {formatPeso(calculated[f.key])}, calculated.</span>
+          </div>
+        ))}
+      </div>
+      <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
+      <div className="flex flex-wrap gap-2">
+        <button type="submit" disabled={pending} className="h-11 rounded-[14px] bg-sun px-5 font-extrabold text-ink disabled:opacity-60">
+          {pending ? "Saving…" : "Save"}
+        </button>
+        <button type="button" onClick={onClose} className="h-11 rounded-[14px] px-4 font-extrabold text-ink hover:bg-mint">
+          Cancel
+        </button>
+      </div>
+    </form>
   );
 }

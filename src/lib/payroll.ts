@@ -46,6 +46,13 @@ export type PayrollSettings = {
   payPhilhealth: boolean;
   payPagibig: boolean;
   payTax: boolean;
+  /**
+   * What your company actually takes for each, when it isn't the standard
+   * rate (say, while you're not yet regular). Null: calculated.
+   */
+  sssAmount: number | null;
+  philhealthAmount: number | null;
+  pagibigAmount: number | null;
 };
 
 export type DayStatus = "worked" | "leave" | "off";
@@ -261,17 +268,36 @@ export function pagibigContribution(monthly: number): number {
 
 export type ContributionKey = "sss" | "philhealth" | "pagibig";
 
-export type Contribution = { key: ContributionKey; name: string; amount: number };
+export type Contribution = {
+  key: ContributionKey;
+  name: string;
+  amount: number;
+  /** True when it's the amount you entered, not the calculated one. */
+  custom: boolean;
+};
 
-/** The monthly contributions you've chosen to pay, due on the 30th. */
-export function contributions(s: PayrollSettings): Contribution[] {
+/** Each contribution's amount from the rates, before any amount you entered. */
+export function calculatedContributions(s: PayrollSettings): Record<ContributionKey, number> {
   const base = monthlyBase(s);
-  const all: (Contribution & { on: boolean })[] = [
-    { key: "sss", name: "SSS contribution", amount: sssContribution(base), on: s.paySss },
-    { key: "philhealth", name: "PhilHealth contribution", amount: philhealthContribution(base), on: s.payPhilhealth },
-    { key: "pagibig", name: "Pag-IBIG contribution", amount: pagibigContribution(base), on: s.payPagibig },
+  return {
+    sss: sssContribution(base),
+    philhealth: philhealthContribution(base),
+    pagibig: pagibigContribution(base),
+  };
+}
+
+/** The monthly contributions you've chosen to pay, due on the 30th. Your own amounts win. */
+export function contributions(s: PayrollSettings): Contribution[] {
+  const calculated = calculatedContributions(s);
+  const all: { key: ContributionKey; name: string; own: number | null; on: boolean }[] = [
+    { key: "sss", name: "SSS contribution", own: s.sssAmount, on: s.paySss },
+    { key: "philhealth", name: "PhilHealth contribution", own: s.philhealthAmount, on: s.payPhilhealth },
+    { key: "pagibig", name: "Pag-IBIG contribution", own: s.pagibigAmount, on: s.payPagibig },
   ];
-  return all.filter((c) => c.on && c.amount > 0).map(({ key, name, amount }) => ({ key, name, amount }));
+  return all
+    .map(({ key, name, own, on }) => ({ key, name, on, custom: own !== null, amount: own ?? calculated[key] }))
+    .filter((c) => c.on && c.amount > 0)
+    .map(({ key, name, amount, custom }) => ({ key, name, amount, custom }));
 }
 
 /** 8% income tax on everything you've earned in the year so far, above ₱250,000. */

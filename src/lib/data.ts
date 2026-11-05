@@ -363,6 +363,10 @@ export async function readPayroll(
       payPhilhealth: row.pay_philhealth,
       payPagibig: row.pay_pagibig,
       payTax: row.pay_tax,
+      // Undefined until migration 0018 is run.
+      sssAmount: row.sss_amount == null ? null : Number(row.sss_amount),
+      philhealthAmount: row.philhealth_amount == null ? null : Number(row.philhealth_amount),
+      pagibigAmount: row.pagibig_amount == null ? null : Number(row.pagibig_amount),
     },
     days: d.data.map((day) => ({
       date: day.work_date,
