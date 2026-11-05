@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { addUpcomingPayments, payInstallments, removePlan } from "@/app/credit-actions";
+import { addUpcomingPayments, deleteLoanForGood, payInstallments, removePlan } from "@/app/credit-actions";
 import { removeWallet, restoreWallet } from "@/app/wallet-actions";
 import { AmountInput } from "@/components/amount-input";
 import { ChoiceChip, FIELD_CLASS } from "@/components/choice-chip";
@@ -84,6 +84,7 @@ export function AccountActions({
   const router = useRouter();
   const [editing, setEditing] = useState(startEditing);
   const [confirm, setConfirm] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const editable = account.type === "credit_line" || (account.type === "loan" && loan);
@@ -133,6 +134,36 @@ export function AccountActions({
       <p className="text-xs text-muted">
         Removing one with history archives it instead, so your past transactions stay right.
       </p>
+      {account.type === "loan" && (
+        <div className="mt-2 flex flex-col gap-2 rounded-[20px] bg-coral-tint p-4">
+          <p className="text-sm leading-snug">
+            <strong>Added by mistake, or twice?</strong> Delete for good removes {account.name} and everything it
+            logged: the money it put into a wallet, its payments and their interest. Wallet balances go back to what
+            they&apos;d be without it. This can&apos;t be undone.
+          </p>
+          <button
+            type="button"
+            disabled={pending}
+            onBlur={() => setConfirmDelete(false)}
+            onClick={() => {
+              if (!confirmDelete) {
+                setConfirmDelete(true);
+                return;
+              }
+              startTransition(async () => {
+                const result = await deleteLoanForGood(account.id);
+                if (result.error) setError(result.error);
+                else router.push("/money");
+              });
+            }}
+            className={`h-11 w-fit rounded-[14px] px-4 font-extrabold disabled:opacity-60 ${
+              confirmDelete ? "bg-coral text-white" : "bg-card text-coral-text"
+            }`}
+          >
+            {pending && confirmDelete ? "Deleting…" : confirmDelete ? "Tap again to delete for good" : "Delete for good"}
+          </button>
+        </div>
+      )}
       <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
     </div>
   );

@@ -295,6 +295,11 @@ export type LoanUpdate = {
   payFromAccountId: string | null;
   /** Payments made before adding it here. Only for a loan you were already paying. */
   paidBefore?: number;
+  /**
+   * Added as just received, but the money was already in the wallet (or
+   * spent) before: takes the transfer back out, so it isn't counted twice.
+   */
+  alreadyHad?: boolean;
 };
 
 /**
@@ -343,10 +348,13 @@ export async function updateLoan(accountId: string, input: LoanUpdate): Promise<
     .select("id, seq, due_on, amount, principal_part, fee_part, transfer_txn_id, fee_txn_id")
     .eq("plan_id", plan.id);
   if (readError) return FAILED;
-  if (plan.source_txn_id && input.paidBefore) {
+  // From here on it's a loan you were already paying: no transfer in.
+  const hadIt = Boolean(plan.source_txn_id && input.alreadyHad);
+  const sourceTxnId = hadIt ? null : plan.source_txn_id;
+  if (sourceTxnId && input.paidBefore) {
     return { error: "This loan's money came in here, so there are no payments from before." };
   }
-  const isPaid =(p: (typeof payments)[number]) => Boolean(p.transfer_txn_id || p.fee_txn_id);
+  const isPaid = (p: (typeof payments)[number]) => Boolean(p.transfer_txn_id || p.fee_txn_id);
   const edited = editLoan(
     payments.map((p) => ({
       seq: p.seq,
@@ -359,7 +367,7 @@ export async function updateLoan(accountId: string, input: LoanUpdate): Promise<
       monthly: exactRate(input.monthly),
       months: input.months,
       nextDue: input.nextDue,
-      paidBefore: plan.source_txn_id ? undefined : input.paidBefore,
+      paidBefore: sourceTxnId ? undefined : input.paidBefore,
     },
   );
   if ("error" in edited) return edited;
@@ -412,18 +420,31 @@ export async function updateLoan(accountId: string, input: LoanUpdate): Promise<
         months: input.months,
         first_due: dues[0] ?? input.nextDue,
         pay_from_account_id: input.payFromAccountId,
+        // Unlinked before the transfer goes: deleting a plan's source deletes the plan.
+        ...(hadIt ? { source_txn_id: null } : {}),
       })
       .eq("id", plan.id),
     // Already paying when added: no transfer in, so the loan starts at what was owed.
     supabase
       .from("accounts")
-      .update(plan.source_txn_id ? { name } : { name, starting_balance: -edited.owedAtStart })
+      .update(sourceTxnId || hadIt ? { name } : { name, starting_balance: -edited.owedAtStart })
       .eq("id", accountId),
-    plan.source_txn_id
-      ? supabase.from("transactions").update({ amount: roundCents(input.received) }).eq("id", plan.source_txn_id)
+    sourceTxnId
+      ? supabase.from("transactions").update({ amount: roundCents(input.received) }).eq("id", sourceTxnId)
       : Promise.resolve({ error: null }),
   ]);
   if (planUpdate.error || accountUpdate.error || sourceUpdate.error) return FAILED;
+
+  if (hadIt && plan.source_txn_id) {
+    // Take the money back out of the wallet, then start the loan at what was owed.
+    const removed = await supabase.from("transactions").delete().eq("id", plan.source_txn_id);
+    if (removed.error) {
+      await supabase.from("installment_plans").update({ source_txn_id: plan.source_txn_id }).eq("id", plan.id);
+      return FAILED;
+    }
+    const started = await supabase.from("accounts").update({ starting_balance: -edited.owedAtStart }).eq("id", accountId);
+    if (started.error) return FAILED;
+  }
 
   refresh();
   return {};
@@ -553,6 +574,91 @@ export async function removePlan(id: string): Promise<CreditResult> {
 
   const { data, error } = await supabase.from("installment_plans").delete().eq("id", id).select("id");
   if (error || !data.length) return { error: "Couldn't remove that plan. Please try again." };
+
+  refresh();
+  return {};
+}
+
+/**
+ * Deletes a loan for good, as if it was never added: the money it brought
+ * into a wallet, every payment and its interest, the plan and the loan.
+ * For a duplicate or a mistake. Wallets go back to what they'd be without it.
+ */
+export async function deleteLoanForGood(accountId: string): Promise<CreditResult> {
+  // It goes into a filter string below, so only a plain id.
+  if (!/^[0-9a-f-]{36}$/i.test(accountId)) return { error: "Couldn't find that loan." };
+  const supabase = await signedInClient();
+  if (!supabase) return { error: SIGNED_OUT_ERROR };
+
+  const { data: account } = await supabase.from("accounts").select("id, type").eq("id", accountId).maybeSingle();
+  if (!account || account.type !== "loan") return { error: "Couldn't find that loan." };
+
+  // The interest of each payment is an expense from the wallet, not linked to the loan account: find it via the schedule.
+  const { data: plans, error: plansError } = await supabase.from("installment_plans").select("id").eq("account_id", accountId);
+  if (plansError) return FAILED;
+  const planIds = plans.map((p) => p.id);
+  let feeIds: string[] = [];
+  // Payments whose fee the schedule already knows.
+  const scheduled = new Set<string>();
+  if (planIds.length) {
+    const { data: payments, error } = await supabase
+      .from("scheduled_payments")
+      .select("transfer_txn_id, fee_txn_id")
+      .in("plan_id", planIds);
+    if (error) return FAILED;
+    feeIds = payments.map((p) => p.fee_txn_id).filter((id): id is string => Boolean(id));
+    for (const p of payments) if (p.transfer_txn_id) scheduled.add(p.transfer_txn_id);
+  }
+
+  // A plan removed earlier took its schedule with it: find those fees by their payment instead.
+  // Each is an expense noted "<payment note> · fee", from the same wallet on the same day.
+  const { data: allPaymentsIn, error: paymentsError } = await supabase
+    .from("transactions")
+    .select("id, account_id, note, occurred_on")
+    .eq("to_account_id", accountId)
+    .not("note", "is", null);
+  if (paymentsError) return FAILED;
+  const paymentsIn = allPaymentsIn.filter((p) => !scheduled.has(p.id));
+  if (paymentsIn.length) {
+    const { data: fees, error } = await supabase
+      .from("transactions")
+      .select("id, account_id, note, occurred_on")
+      .eq("type", "expense")
+      .eq("category", "fees")
+      .in("note", [...new Set(paymentsIn.map((p) => `${p.note} · fee`))]);
+    if (error) return FAILED;
+    const taken = new Set(feeIds);
+    for (const p of paymentsIn) {
+      const fee = fees.find(
+        (f) => !taken.has(f.id) && f.note === `${p.note} · fee` && f.account_id === p.account_id && f.occurred_on === p.occurred_on,
+      );
+      if (fee) taken.add(fee.id);
+    }
+    feeIds = [...taken];
+  }
+
+  // Plans first (their payments go with them), so nothing still points at the transactions.
+  if (planIds.length) {
+    const { error } = await supabase.from("installment_plans").delete().in("id", planIds);
+    if (error) return FAILED;
+  }
+  if (feeIds.length) {
+    const { error } = await supabase.from("transactions").delete().in("id", feeIds);
+    if (error) return FAILED;
+  }
+  // The money received and every payment: transfers from or to the loan.
+  const transfers = await supabase.from("transactions").delete().or(`account_id.eq.${accountId},to_account_id.eq.${accountId}`);
+  if (transfers.error) return FAILED;
+
+  // Anything else saved against it stops pointing at it.
+  const [planned, recurring] = await Promise.all([
+    supabase.from("planned_expenses").update({ account_id: null }).eq("account_id", accountId),
+    supabase.from("recurring_items").update({ account_id: null }).eq("account_id", accountId),
+  ]);
+  if (planned.error || recurring.error) return FAILED;
+
+  const { error } = await supabase.from("accounts").delete().eq("id", accountId);
+  if (error) return { error: "Its history is gone, but the loan itself couldn't be deleted. Please try again." };
 
   refresh();
   return {};

@@ -36,8 +36,10 @@ export function LoanEditForm({
   const [months, setMonths] = useState(String(plan?.months ?? ""));
   const [nextDue, setNextDue] = useState(firstUnpaid?.dueOn ?? today);
   const [payFrom, setPayFrom] = useState(plan?.payFromAccountId ?? wallets[0]?.id ?? "");
+  // Added as just received, but the money was already in the wallet or spent: take the transfer back out.
+  const [alreadyHad, setAlreadyHad] = useState(false);
   // Already paying when added (no transfer in): payments before the first saved one were made outside the app.
-  const running = Boolean(plan && !plan.sourceTxnId);
+  const running = Boolean(plan && (!plan.sourceTxnId || alreadyHad));
   const savedFirstSeq = plan?.payments.length ? Math.min(...plan.payments.map((p) => p.seq)) : 1;
   const [paidBefore, setPaidBefore] = useState(savedFirstSeq - 1);
   const [error, setError] = useState<string | null>(null);
@@ -49,6 +51,7 @@ export function LoanEditForm({
     months: Number(months),
     nextDue,
     ...(running ? { paidBefore } : {}),
+    ...(alreadyHad ? { alreadyHad } : {}),
   };
   const paidHere = plan?.payments.filter((p) => p.transactionId).map((p) => p.seq) ?? [];
   const maxBefore = Math.min(
@@ -113,7 +116,7 @@ export function LoanEditForm({
       {plan && (
         <>
           <div className="grid grid-cols-2 gap-3">
-            {money("edit-loan-received", plan.sourceTxnId ? "Amount received" : "Loan amount", received, setReceived)}
+            {money("edit-loan-received", plan.sourceTxnId && !alreadyHad ? "Amount received" : "Loan amount", received, setReceived)}
             {money("edit-loan-monthly", "Monthly payment", monthly, setMonthly)}
             <div className="flex flex-col gap-1">
               <label htmlFor="edit-loan-months" className="text-sm font-bold">Months</label>
@@ -181,10 +184,29 @@ export function LoanEditForm({
                 "Every payment is made."
               )}
               {paidCount > 0 && ` The ${paidCount} payment${paidCount === 1 ? "" : "s"} you made stay as they are.`}
-              {plan.sourceTxnId
+              {plan.sourceTxnId && !alreadyHad
                 ? " A new amount received also changes the transfer that brought it in."
                 : ""}
             </p>
+          )}
+          {plan.sourceTxnId && (
+            <label className="flex cursor-pointer items-start gap-3 rounded-2xl bg-sun-tint px-3.5 py-3 text-sm leading-snug">
+              <input
+                type="checkbox"
+                checked={alreadyHad}
+                onChange={(e) => {
+                  setAlreadyHad(e.target.checked);
+                  if (!e.target.checked) setPaidBefore(savedFirstSeq - 1);
+                }}
+                className="mt-0.5 h-5 w-5 shrink-0 accent-sea"
+              />
+              <span>
+                <strong>Don&apos;t add this money to a wallet.</strong> For money already spent (even if you don&apos;t
+                remember where), or already counted in the wallet&apos;s balance. Takes the{" "}
+                {formatPeso(roundCents(plan.principal))} back out of the wallet it went into. What you owe stays the
+                same.
+              </span>
+            </label>
           )}
         </>
       )}

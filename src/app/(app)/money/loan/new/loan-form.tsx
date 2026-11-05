@@ -120,7 +120,7 @@ export function LoanForm({ wallets, today }: { wallets: Account[]; today: string
             onClick={() => pickMode(m)}
             className={`h-10 rounded-xl text-sm ${mode === m ? "bg-sea font-extrabold text-white" : "font-bold text-muted hover:text-ink"}`}
           >
-            {m === "new" ? "Just received" : "Already paying"}
+            {m === "new" ? "New loan" : "Existing loan"}
           </button>
         ))}
       </div>
@@ -164,7 +164,7 @@ export function LoanForm({ wallets, today }: { wallets: Account[]; today: string
                 {wallets.map((w) => (
                   <option key={w.id} value={w.id}>{w.name}</option>
                 ))}
-                {!wallets.length && <option value="">No wallet yet</option>}
+                <option value="">Don&apos;t add to a wallet (already spent)</option>
               </select>
             </div>
           )}
@@ -221,6 +221,15 @@ export function LoanForm({ wallets, today }: { wallets: Account[]; today: string
           </div>
           {!running && into && dateField("loan-date", "Received on", receivedOn, setReceivedOn)}
         </div>
+        {!running && into && isValidDate(receivedOn) && receivedOn < today && (
+          <p className="rounded-2xl bg-sun-tint px-3.5 py-2.5 text-[13px] leading-snug">
+            Received before today? If {wallets.find((w) => w.id === into)?.name}&apos;s balance here already includes it,
+            or you&apos;ve spent it, adding it again counts it twice.{" "}
+            <button type="button" onClick={() => pickMode("running")} className="font-extrabold text-sea-dark underline">
+              Add it as an existing loan
+            </button>
+          </p>
+        )}
         {running && datesOk && (
           <p className="text-[13px] leading-snug text-muted">
             {fullyPaid
@@ -252,6 +261,12 @@ export function LoanForm({ wallets, today }: { wallets: Account[]; today: string
             {paid === 1 ? "" : "s"} you already made {paid === 1 ? "isn't" : "aren't"} logged again. {name || "The loan"}{" "}
             starts at what you still owe{valid ? ` (${formatPeso(owedNow)})` : ""}. Each payment from here: the
             principal part is a transfer, only the interest is an expense.
+          </>
+        ) : !into ? (
+          <>
+            <strong>Not added to any wallet</strong>, since it&apos;s already spent (even if you don&apos;t remember
+            where). {name || "The loan"} starts at what you owe{valid ? ` (${formatPeso(owedNow)})` : ""}. Each
+            payment: the principal part is a transfer, only the interest is an expense.
           </>
         ) : (
           <>
