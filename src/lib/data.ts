@@ -53,6 +53,8 @@ export type Transaction = {
   category: string | null;
   note: string | null;
   occurredOn: string;
+  /** When it was logged (an ISO timestamp); shown as the time of day. */
+  createdAt: string | null;
   /** The same on every record of one split bill (migration 0012). */
   splitId: string | null;
 };
@@ -124,7 +126,7 @@ export type ScheduledPayment = {
 };
 
 /** A recent expense, income or transfer to repeat with one tap in Add. */
-export type Template = Omit<Transaction, "id" | "occurredOn" | "splitId">;
+export type Template = Omit<Transaction, "id" | "occurredOn" | "createdAt" | "splitId">;
 
 /**
  * Supabase errors are plain objects; wrap them so error pages and logs show
@@ -596,7 +598,7 @@ export async function getScheduled(today: string) {
   return { accounts, recurring, planned, items, payroll: paydayAmounts !== undefined };
 }
 
-const TXN_BASE = "id, type, amount, account_id, to_account_id, category, note, occurred_on";
+const TXN_BASE = "id, type, amount, account_id, to_account_id, category, note, occurred_on, created_at";
 const TXN_COLUMNS = `${TXN_BASE}, split_id`;
 
 type TxnRow = {
@@ -608,6 +610,7 @@ type TxnRow = {
   category: string | null;
   note: string | null;
   occurred_on: string;
+  created_at?: string | null;
   split_id?: string | null;
 };
 
@@ -621,6 +624,7 @@ function toTransaction(r: TxnRow): Transaction {
     category: r.category,
     note: r.note,
     occurredOn: r.occurred_on,
+    createdAt: r.created_at ?? null,
     splitId: r.split_id ?? null,
   };
 }

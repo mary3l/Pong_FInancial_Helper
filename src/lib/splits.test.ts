@@ -10,6 +10,7 @@ const t = (over: Partial<Transaction> & { id: string }): Transaction => ({
   category: null,
   note: null,
   occurredOn: "2026-11-04",
+  createdAt: null,
   splitId: null,
   ...over,
 });

@@ -84,6 +84,18 @@ export function formatRelativeDay(date: string, todayStr = today()): string {
   return formatShortDay(date, todayStr);
 }
 
+/** "3:42 PM" in Philippine time, from an ISO timestamp; "" if there's none. */
+export function formatTime(timestamp: string | null | undefined): string {
+  if (!timestamp) return "";
+  const ms = Date.parse(timestamp);
+  if (Number.isNaN(ms)) return "";
+  return new Intl.DateTimeFormat("en-US", {
+    timeZone: APP_TIME_ZONE,
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(ms);
+}
+
 // Activity is shown per kinsenas: the 1st–15th and the 16th–end of month.
 export type Period = { start: string; end: string };
 

@@ -18,6 +18,8 @@ export type SplitBill = {
   /** The wallet it was paid from. */
   accountId: string;
   occurredOn: string;
+  /** When it was logged. */
+  createdAt: string | null;
 };
 
 export type ListItem = { kind: "one"; txn: Transaction } | { kind: "split"; split: SplitBill };
@@ -49,6 +51,7 @@ export function toSplitBill(splitId: string, records: Transaction[]): SplitBill 
     title: splitNote(records),
     accountId: (mine ?? records[0]).accountId,
     occurredOn: records[0].occurredOn,
+    createdAt: records[0].createdAt,
   };
 }
 
