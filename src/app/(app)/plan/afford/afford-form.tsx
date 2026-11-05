@@ -79,7 +79,7 @@ export function AffordForm({
       }}
       className="flex flex-col gap-4 lg:grid lg:grid-cols-2 lg:items-start lg:gap-6"
     >
-      <div className="flex flex-col gap-3 rounded-[20px] bg-white p-4">
+      <div className="flex flex-col gap-3 rounded-[20px] bg-card p-4">
         <div className="flex flex-col gap-1">
           <label htmlFor="afford-what" className="text-sm font-bold">What is it?</label>
           <input id="afford-what" value={name} onChange={(e) => setName(e.target.value)} maxLength={50} placeholder="e.g. running shoes" className={FIELD_CLASS} />
@@ -125,7 +125,7 @@ export function AffordForm({
                   type="button"
                   aria-pressed={selected}
                   onClick={() => setMonths(o.value)}
-                  className={`h-10 rounded-xl text-sm ${selected ? "bg-white font-extrabold text-ink shadow-sm" : "font-bold text-muted"}`}
+                  className={`h-10 rounded-xl text-sm ${selected ? "bg-card font-extrabold text-ink shadow-sm" : "font-bold text-muted"}`}
                 >
                   {o.label}
                 </button>
@@ -140,7 +140,7 @@ export function AffordForm({
                   type="button"
                   aria-pressed={months === m}
                   onClick={() => setMonths(m)}
-                  className={`h-9 rounded-full px-3.5 text-sm font-extrabold ${months === m ? "bg-ink text-white" : "bg-mint text-ink"}`}
+                  className={`h-9 rounded-full px-3.5 text-sm font-extrabold ${months === m ? "bg-ink text-mint" : "bg-mint text-ink"}`}
                 >
                   {m} months
                 </button>
@@ -156,7 +156,7 @@ export function AffordForm({
       </div>
 
       <div className="flex flex-col gap-4">
-        <section aria-live="polite" className="flex flex-col gap-3 rounded-[20px] bg-white p-4">
+        <section aria-live="polite" className="flex flex-col gap-3 rounded-[20px] bg-card p-4">
           <h2 className="text-[13px] font-extrabold text-muted">RESULT</h2>
           {verdict ? (
             <Result verdict={verdict} today={today} onWait={setWhen} />

@@ -10,7 +10,7 @@ export function OfflineBanner() {
   return (
     <div
       role="status"
-      className="fixed inset-x-0 top-0 z-30 bg-ink px-4 py-2 text-center text-sm font-bold text-white pt-[max(0.5rem,env(safe-area-inset-top))]"
+      className="fixed inset-x-0 top-0 z-30 bg-ink px-4 py-2 text-center text-sm font-bold text-mint pt-[max(0.5rem,env(safe-area-inset-top))]"
     >
       You&apos;re offline. I&apos;ll save and load again as soon as you&apos;re back.
     </div>

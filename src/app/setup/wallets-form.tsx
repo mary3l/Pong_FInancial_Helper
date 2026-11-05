@@ -80,7 +80,7 @@ export function WalletsForm({ existing }: { existing: Account[] }) {
   return (
     <div className="flex flex-1 flex-col gap-4">
       {existing.length > 0 && (
-        <section aria-label="Wallets you already added" className="flex flex-col rounded-3xl bg-white px-5 py-2">
+        <section aria-label="Wallets you already added" className="flex flex-col rounded-3xl bg-card px-5 py-2">
           {existing.map((a) => (
             <div key={a.id} className="flex items-center justify-between border-b border-line-soft py-3 last:border-0">
               <div className="flex flex-col">
@@ -95,7 +95,7 @@ export function WalletsForm({ existing }: { existing: Account[] }) {
 
       <div className="flex flex-col gap-3">
         {rows.map((row) => (
-          <div key={row.key} className="flex flex-col gap-3 rounded-[20px] bg-white p-4">
+          <div key={row.key} className="flex flex-col gap-3 rounded-[20px] bg-card p-4">
             <div className="flex items-center gap-3">
               {row.custom ? (
                 <>
@@ -137,7 +137,7 @@ export function WalletsForm({ existing }: { existing: Account[] }) {
                       aria-pressed={row.type === t.value}
                       onClick={() => update(row.key, { type: t.value })}
                       className={`h-9 rounded-full px-3.5 text-sm font-extrabold ${
-                        row.type === t.value ? "bg-ink text-white" : "bg-mint text-ink"
+                        row.type === t.value ? "bg-ink text-mint" : "bg-mint text-ink"
                       }`}
                     >
                       {t.label}
@@ -159,7 +159,7 @@ export function WalletsForm({ existing }: { existing: Account[] }) {
         <button
           type="button"
           onClick={addRow}
-          className="h-[52px] rounded-[20px] border-2 border-dashed border-line font-extrabold text-ink hover:bg-white"
+          className="h-[52px] rounded-[20px] border-2 border-dashed border-line font-extrabold text-ink hover:bg-card"
         >
           + Add another bank or e-wallet
         </button>

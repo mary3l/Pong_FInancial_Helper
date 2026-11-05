@@ -96,7 +96,7 @@ async function Wallets() {
             { label: "You owe", value: owe },
             { label: "Net worth", value: roundCents(have + owedToYou - owe) },
           ].map((s) => (
-            <div key={s.label} className="flex flex-col gap-0.5 rounded-2xl bg-white px-3 py-3">
+            <div key={s.label} className="flex flex-col gap-0.5 rounded-2xl bg-card px-3 py-3">
               <dt className="text-xs font-bold text-muted">{s.label}</dt>
               <dd className={`font-display text-lg font-semibold sm:text-2xl ${s.value < 0 ? "text-coral-text" : ""}`}>
                 {formatPeso(s.value)}
@@ -135,7 +135,7 @@ async function Wallets() {
                   {group.label} · {formatPeso(roundCents(group.accounts.reduce((sum, a) => sum + Math.max(0, -a.balance), 0)))}
                 </h3>
               )}
-              <ul className="flex flex-col rounded-[20px] bg-white px-4 py-1.5">
+              <ul className="flex flex-col rounded-[20px] bg-card px-4 py-1.5">
                 {group.accounts.map((a) => (
                   <li key={a.id} className="flex items-center gap-1 border-b border-line-soft last:border-0">
                     <Link href={`/money/${a.id}`} className="flex min-h-14 min-w-0 flex-1 items-center gap-3 py-2.5 text-ink">
@@ -164,13 +164,13 @@ async function Wallets() {
           <div className="grid gap-2 sm:grid-cols-2">
             <Link
               href="/money/credit/new"
-              className="flex h-[52px] items-center justify-center rounded-[20px] border-2 border-dashed border-line font-extrabold text-ink hover:bg-white"
+              className="flex h-[52px] items-center justify-center rounded-[20px] border-2 border-dashed border-line font-extrabold text-ink hover:bg-card"
             >
               + BNPL &amp; installments (SPayLater, Atome, MariBank)
             </Link>
             <Link
               href="/money/loan/new"
-              className="flex h-[52px] items-center justify-center rounded-[20px] border-2 border-dashed border-line font-extrabold text-ink hover:bg-white"
+              className="flex h-[52px] items-center justify-center rounded-[20px] border-2 border-dashed border-line font-extrabold text-ink hover:bg-card"
             >
               + Loan (SLoan, MariLoan)
             </Link>
@@ -195,7 +195,7 @@ function PeoplePanel({ people, today }: { people: Person[]; today: string }) {
         <h2 id="people-panel-heading" className="font-display text-xl font-semibold">Utang &amp; pautang</h2>
         <Link href="/money/people" className="text-sm font-extrabold text-sea">See all ›</Link>
       </div>
-      <ul className="flex flex-col rounded-[20px] bg-white px-4 py-1.5">
+      <ul className="flex flex-col rounded-[20px] bg-card px-4 py-1.5">
         {open.slice(0, 8).map((p) => (
           <li key={p.id} className="border-b border-line-soft last:border-0">
             <Link href={`/money/people/${p.id}`} className="flex min-h-12 items-center justify-between gap-3 py-2 text-ink">

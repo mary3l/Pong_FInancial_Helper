@@ -82,14 +82,14 @@ export function LoanForm({ wallets, today }: { wallets: Account[]; today: string
         {[...PROVIDERS, "Other"].map((p) => {
           const selected = p === "Other" ? !PROVIDERS.includes(name) : name === p;
           return (
-            <ChoiceChip key={p} selected={selected} onClick={() => setName(p === "Other" ? "" : p)} className={selected ? "" : "bg-white"}>
+            <ChoiceChip key={p} selected={selected} onClick={() => setName(p === "Other" ? "" : p)} className={selected ? "" : "bg-card"}>
               {p}
             </ChoiceChip>
           );
         })}
       </div>
 
-      <div className="flex flex-col gap-3 rounded-[20px] bg-white p-4">
+      <div className="flex flex-col gap-3 rounded-[20px] bg-card p-4">
         <div className="flex flex-col gap-1">
           <label htmlFor="loan-name" className="text-sm font-bold">Name</label>
           <input id="loan-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={60} required className={FIELD_CLASS} />
@@ -138,7 +138,7 @@ export function LoanForm({ wallets, today }: { wallets: Account[]; today: string
       </div>
 
       {summary && (
-        <dl className="flex flex-col gap-1.5 rounded-[20px] bg-white px-4 py-3.5 text-[15px]">
+        <dl className="flex flex-col gap-1.5 rounded-[20px] bg-card px-4 py-3.5 text-[15px]">
           <div className="flex justify-between gap-3"><dt>Total you&apos;ll pay</dt><dd className="font-extrabold">{formatPeso(summary.total)}</dd></div>
           <div className="flex justify-between gap-3"><dt>Interest &amp; fees</dt><dd className="font-extrabold">{formatPeso(summary.interest)}</dd></div>
           <div className="flex justify-between gap-3"><dt>Effective rate</dt><dd className="font-extrabold">{summary.ratePerMonth}% / month</dd></div>
@@ -154,7 +154,7 @@ export function LoanForm({ wallets, today }: { wallets: Account[]; today: string
       {schedule.length > 0 && (
         <section aria-labelledby="loan-schedule" className="flex flex-col gap-1">
           <h2 id="loan-schedule" className="text-sm font-extrabold">Schedule preview</h2>
-          <ul className="flex flex-col rounded-[20px] bg-white px-4 py-1">
+          <ul className="flex flex-col rounded-[20px] bg-card px-4 py-1">
             {schedule.slice(0, 3).map((r) => (
               <li key={r.seq} className="flex justify-between border-b border-line-soft py-2 text-[15px] last:border-0">
                 <span>{formatShortDay(r.dueOn, today)} · {r.seq} of {terms.months}</span>

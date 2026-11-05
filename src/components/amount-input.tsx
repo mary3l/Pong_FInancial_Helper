@@ -167,16 +167,16 @@ function CalculatorSheet({
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
-      className="m-0 mt-auto w-full max-w-none rounded-t-[28px] bg-mint p-0 text-ink backdrop:bg-ink/50 lg:m-auto lg:max-w-[400px] lg:rounded-[28px] lg:shadow-[0_24px_60px_rgba(18,48,42,0.35)]"
+      className="m-0 mt-auto w-full max-w-none rounded-t-[28px] bg-mint p-0 text-ink backdrop:bg-scrim/50 lg:m-auto lg:max-w-[400px] lg:rounded-[28px] lg:shadow-[0_24px_60px_rgba(18,48,42,0.35)]"
     >
       <div className="flex flex-col gap-3 px-5 pt-4 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
         <div className="flex items-center justify-between gap-3">
           <span className="truncate text-sm font-extrabold">{label}</span>
-          <button type="button" onClick={onClose} aria-label="Close calculator" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white">
+          <button type="button" onClick={onClose} aria-label="Close calculator" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-card">
             <CloseIcon size={16} />
           </button>
         </div>
-        <div aria-live="polite" className="flex flex-col items-end rounded-[20px] bg-white px-4 py-2.5">
+        <div aria-live="polite" className="flex flex-col items-end rounded-[20px] bg-card px-4 py-2.5">
           <span className="min-h-6 text-[17px] font-bold text-muted">
             {hasOperator(calc.expr) ? prettyExpression(calc.expr) : " "}
           </span>

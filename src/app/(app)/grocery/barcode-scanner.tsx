@@ -83,17 +83,17 @@ export function BarcodeScanner({ onDetected, onClose }: { onDetected: (code: str
   }, []);
 
   return (
-    <div className="relative overflow-hidden rounded-[20px] bg-ink">
+    <div className="relative overflow-hidden rounded-[20px] bg-scrim">
       <video ref={video} muted playsInline className="aspect-[4/3] w-full object-cover" />
       <div aria-hidden="true" className="pointer-events-none absolute inset-x-10 top-1/2 h-24 -translate-y-1/2 rounded-2xl border-4 border-sun" />
-      <p role="status" className="absolute inset-x-0 bottom-0 bg-ink/80 px-4 py-2 text-center text-sm font-bold text-white">
+      <p role="status" className="absolute inset-x-0 bottom-0 bg-scrim/80 px-4 py-2 text-center text-sm font-bold text-white">
         {problem ?? "Point at the barcode"}
       </p>
       <button
         type="button"
         onClick={onClose}
         aria-label="Close camera"
-        className="absolute top-2 right-2 flex h-11 w-11 items-center justify-center rounded-full bg-white text-ink"
+        className="absolute top-2 right-2 flex h-11 w-11 items-center justify-center rounded-full bg-card text-ink"
       >
         <CloseIcon size={18} />
       </button>

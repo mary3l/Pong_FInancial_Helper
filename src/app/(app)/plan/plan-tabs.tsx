@@ -37,7 +37,7 @@ export function SegmentLinks({
   return (
     <nav
       aria-label={label}
-      className="grid gap-1 rounded-2xl bg-white p-1"
+      className="grid gap-1 rounded-2xl bg-card p-1"
       style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
     >
       {options.map((o) => (

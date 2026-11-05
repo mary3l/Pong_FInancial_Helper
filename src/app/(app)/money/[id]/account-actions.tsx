@@ -79,7 +79,7 @@ export function AccountActions({ account }: { account: Account }) {
 
   if (editing) {
     return (
-      <div className="rounded-[20px] bg-white p-4">
+      <div className="rounded-[20px] bg-card p-4">
         <CreditLineForm account={account} onDone={() => setEditing(false)} />
       </div>
     );
@@ -89,7 +89,7 @@ export function AccountActions({ account }: { account: Account }) {
     <div className="flex flex-col gap-2 pt-2">
       <div className="flex flex-wrap gap-2">
         {account.type === "credit_line" && (
-          <button type="button" onClick={() => setEditing(true)} className="h-11 rounded-[14px] bg-white px-4 font-extrabold text-ink hover:bg-sea-tint">
+          <button type="button" onClick={() => setEditing(true)} className="h-11 rounded-[14px] bg-card px-4 font-extrabold text-ink hover:bg-sea-tint">
             Edit {account.name}
           </button>
         )}
@@ -109,7 +109,7 @@ export function AccountActions({ account }: { account: Account }) {
             });
           }}
           className={`h-11 rounded-[14px] px-4 font-extrabold disabled:opacity-60 ${
-            account.archived ? "bg-white text-ink" : confirm ? "bg-coral text-white" : "text-coral-text hover:bg-coral-tint"
+            account.archived ? "bg-card text-ink" : confirm ? "bg-coral text-white" : "text-coral-text hover:bg-coral-tint"
           }`}
         >
           {account.archived ? "Restore" : confirm ? "Tap again to remove" : "Remove"}
@@ -208,7 +208,7 @@ export function UpcomingPayments({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="h-[52px] rounded-[20px] border-2 border-dashed border-line font-extrabold text-ink hover:bg-white"
+        className="h-[52px] rounded-[20px] border-2 border-dashed border-line font-extrabold text-ink hover:bg-card"
       >
         + Upcoming payment or installment
       </button>
@@ -216,7 +216,7 @@ export function UpcomingPayments({
   }
 
   return (
-    <form onSubmit={save} className="flex flex-col gap-3 rounded-[20px] bg-white p-4">
+    <form onSubmit={save} className="flex flex-col gap-3 rounded-[20px] bg-card p-4">
       <div className="flex flex-col gap-0.5">
         <h2 className="font-display text-xl font-semibold">Upcoming payment</h2>
         <p className="text-[13px] text-muted">

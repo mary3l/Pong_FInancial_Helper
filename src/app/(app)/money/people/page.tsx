@@ -56,7 +56,7 @@ async function People({ searchParams }: Pick<PageProps<"/money/people">, "search
   return (
     <>
       <div className="grid grid-cols-2 gap-2">
-        <div className="flex flex-col gap-0.5 rounded-2xl bg-white px-4 py-3">
+        <div className="flex flex-col gap-0.5 rounded-2xl bg-card px-4 py-3">
           <span className="text-xs font-bold text-muted">Owed to you</span>
           <span className="font-display text-2xl font-semibold">{formatPeso(owedTotal)}</span>
           <span className="text-xs text-muted">
@@ -64,7 +64,7 @@ async function People({ searchParams }: Pick<PageProps<"/money/people">, "search
             {overdue > 0 && <strong className="text-coral-text"> · {overdue} overdue</strong>}
           </span>
         </div>
-        <div className="flex flex-col gap-0.5 rounded-2xl bg-white px-4 py-3">
+        <div className="flex flex-col gap-0.5 rounded-2xl bg-card px-4 py-3">
           <span className="text-xs font-bold text-muted">You owe</span>
           <span className="font-display text-2xl font-semibold">{formatPeso(oweTotal)}</span>
           <span className="text-xs text-muted">{youOwe.length} {youOwe.length === 1 ? "person" : "people"}</span>
@@ -81,7 +81,7 @@ async function People({ searchParams }: Pick<PageProps<"/money/people">, "search
       </div>
 
       {people.length > 0 && (
-        <nav aria-label="View" className="grid grid-cols-2 gap-1 rounded-xl bg-white p-1">
+        <nav aria-label="View" className="grid grid-cols-2 gap-1 rounded-xl bg-card p-1">
           {[
             { label: "By person", href: "/money/people", on: !byBill },
             { label: "By bill", href: "/money/people?view=bills", on: byBill },
@@ -104,13 +104,13 @@ async function People({ searchParams }: Pick<PageProps<"/money/people">, "search
         splitsReady ? (
           <Bills people={people} recent={recent} names={names} today={today} />
         ) : (
-          <p className="rounded-[20px] bg-white px-4 py-3 text-[15px] text-muted">
+          <p className="rounded-[20px] bg-card px-4 py-3 text-[15px] text-muted">
             To see split bills here, run <strong className="text-ink">Step 12</strong> in supabase/SQL_GUIDE.md
             (migrations/0012_split_groups.sql) in your Supabase project, then reload.
           </p>
         )
       ) : people.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 rounded-3xl bg-white px-6 py-10 text-center">
+        <div className="flex flex-col items-center gap-3 rounded-3xl bg-card px-6 py-10 text-center">
           <Pong mood="listen" size={100} decorative />
           <p className="max-w-xs text-[15px] text-muted">
             Lent someone money, or split dinner? I&apos;ll keep track of who owes whom, and I
@@ -121,7 +121,7 @@ async function People({ searchParams }: Pick<PageProps<"/money/people">, "search
         <>
           <section aria-labelledby="owe-you-heading" className="flex flex-col gap-2">
             <h2 id="owe-you-heading" className="text-[13px] font-extrabold text-muted">OWE YOU · OLDEST FIRST</h2>
-            <ul className="flex flex-col rounded-[20px] bg-white px-4 py-1.5">
+            <ul className="flex flex-col rounded-[20px] bg-card px-4 py-1.5">
               {[...oweYou].sort((a, b) => sinceOldest(a).localeCompare(sinceOldest(b))).map((p) => {
                 const due = dueDate(p);
                 const late = isOverdue(p, today);
@@ -151,7 +151,7 @@ async function People({ searchParams }: Pick<PageProps<"/money/people">, "search
 
           <section aria-labelledby="you-owe-heading" className="flex flex-col gap-2">
             <h2 id="you-owe-heading" className="text-[13px] font-extrabold text-muted">YOU OWE</h2>
-            <ul className="flex flex-col rounded-[20px] bg-white px-4 py-1.5">
+            <ul className="flex flex-col rounded-[20px] bg-card px-4 py-1.5">
               {youOwe.map((p) => (
                 <li key={p.id} className="flex min-h-14 items-center gap-3 border-b border-line-soft py-2.5 last:border-0">
                   <Link href={`/money/people/${p.id}`} className="flex min-w-0 flex-1 items-center gap-3 text-ink">
@@ -214,7 +214,7 @@ function Bills({
   const done = bills.filter((b) => b.owed === 0).slice(0, 10);
 
   const list = (rows: typeof bills) => (
-    <ul className="flex flex-col rounded-[20px] bg-white px-4 py-1.5">
+    <ul className="flex flex-col rounded-[20px] bg-card px-4 py-1.5">
       {rows.map((b) => (
         <li key={b.split.splitId} className="border-b border-line-soft last:border-0">
           <BillRow {...b} wallet={names.get(b.split.accountId) ?? "Removed wallet"} today={today} />
@@ -230,7 +230,7 @@ function Bills({
         {open.length ? (
           list(open)
         ) : (
-          <p className="rounded-[20px] bg-white px-4 py-3 text-[15px] text-muted">
+          <p className="rounded-[20px] bg-card px-4 py-3 text-[15px] text-muted">
             {bills.length ? "Everyone has paid back their share. Nice!" : "No split bills yet. Tap + Split a bill when you pay for a group."}
           </p>
         )}

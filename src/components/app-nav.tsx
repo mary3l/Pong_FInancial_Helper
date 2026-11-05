@@ -52,7 +52,7 @@ function BottomNavBar({ isActive }: { isActive: IsActive }) {
   return (
     <nav
       aria-label="Main"
-      className="fixed inset-x-0 bottom-0 z-20 grid h-[84px] grid-cols-5 items-center rounded-t-3xl bg-white pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_20px_rgba(18,48,42,0.08)] lg:hidden"
+      className="fixed inset-x-0 bottom-0 z-20 grid h-[84px] grid-cols-5 items-center rounded-t-3xl bg-card pb-[env(safe-area-inset-bottom)] shadow-[0_-4px_20px_rgba(18,48,42,0.08)] lg:hidden"
     >
       {[home, activity].map((tab) => (
         <BottomTab key={tab.href} {...tab} active={isActive(tab.href)} />
@@ -107,7 +107,7 @@ function ActiveSidebar() {
 function SidebarPanel({ isActive }: { isActive: IsActive }) {
 
   return (
-    <aside className="sticky top-6 hidden w-64 shrink-0 flex-col gap-5 self-start rounded-[28px] bg-white px-4 py-5 lg:flex">
+    <aside className="sticky top-6 hidden w-64 shrink-0 flex-col gap-5 self-start rounded-[28px] bg-card px-4 py-5 lg:flex">
       <Link href="/" className="flex items-center gap-2 text-ink no-underline">
         <Pong size={48} decorative />
         <span className="font-display text-2xl font-semibold">Pong Money</span>

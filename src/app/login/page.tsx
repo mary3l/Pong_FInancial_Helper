@@ -13,14 +13,14 @@ export default function LoginPage() {
       <div aria-hidden="true" className="absolute top-20 right-24 h-2.5 w-2.5 rounded-full bg-sun" />
 
       <div className="relative flex flex-1 flex-col items-center justify-center pt-16 pb-8">
-        <div className="relative mb-3.5 rounded-[20px] bg-white px-[18px] py-3 font-display text-xl font-semibold text-ink">
+        <div className="relative mb-3.5 rounded-[20px] bg-card px-[18px] py-3 font-display text-xl font-semibold text-ink">
           Hi! I&apos;m Pong.
-          <span aria-hidden="true" className="absolute -bottom-2 left-1/2 block h-4 w-4 -translate-x-1/2 rotate-45 bg-white" />
+          <span aria-hidden="true" className="absolute -bottom-2 left-1/2 block h-4 w-4 -translate-x-1/2 rotate-45 bg-card" />
         </div>
         <Pong mood="happy" size={230} decorative />
       </div>
 
-      <div className="relative mx-auto flex w-full max-w-md flex-col gap-[18px] rounded-t-[32px] bg-white px-6 pt-8 pb-9 md:mb-10 md:rounded-[32px]">
+      <div className="relative mx-auto flex w-full max-w-md flex-col gap-[18px] rounded-t-[32px] bg-card px-6 pt-8 pb-9 md:mb-10 md:rounded-[32px]">
         <h1 className="font-display text-[32px] leading-tight font-semibold">
           Let&apos;s make every peso count
         </h1>

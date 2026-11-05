@@ -74,7 +74,7 @@ export function PaymentForm({
           else setOpen(false);
         });
       }}
-      className="col-span-2 flex flex-col gap-3 rounded-[20px] bg-white p-4"
+      className="col-span-2 flex flex-col gap-3 rounded-[20px] bg-card p-4"
     >
       <div className="grid grid-cols-2 gap-3">
         <div className="flex flex-col gap-1">
@@ -182,7 +182,7 @@ export function EditPerson({ personId, name, contact }: { personId: string; name
 
   if (!open) {
     return (
-      <button type="button" onClick={() => setOpen(true)} className="h-10 rounded-full px-3 text-sm font-extrabold text-sea-dark hover:bg-white">
+      <button type="button" onClick={() => setOpen(true)} className="h-10 rounded-full px-3 text-sm font-extrabold text-sea-dark hover:bg-card">
         Edit
       </button>
     );
@@ -197,7 +197,7 @@ export function EditPerson({ personId, name, contact }: { personId: string; name
           else setOpen(false);
         });
       }}
-      className="flex w-full flex-col gap-2 rounded-[20px] bg-white p-4"
+      className="flex w-full flex-col gap-2 rounded-[20px] bg-card p-4"
     >
       <label htmlFor="person-name" className="text-sm font-bold">Name</label>
       <input id="person-name" value={value} onChange={(e) => setValue(e.target.value)} maxLength={60} className={FIELD_CLASS} />

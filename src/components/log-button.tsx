@@ -53,7 +53,7 @@ export function LogButton({ item }: { item: ForecastItem }) {
   }
 
   const buttonClass = `flex h-10 min-w-[100px] items-center justify-center rounded-full px-3 text-[13px] font-extrabold disabled:opacity-60 ${
-    paid ? "border-2 border-line bg-white text-ink" : incoming ? "bg-sun text-ink" : "bg-sea text-white"
+    paid ? "border-2 border-line bg-card text-ink" : incoming ? "bg-sun text-ink" : "bg-sea text-white"
   }`;
 
   return (

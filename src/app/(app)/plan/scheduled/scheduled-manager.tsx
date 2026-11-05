@@ -156,7 +156,7 @@ export function ScheduledManager({
             </span>
           )}
         </div>
-        <ul className="flex flex-col rounded-[20px] bg-white px-4 py-1.5">
+        <ul className="flex flex-col rounded-[20px] bg-card px-4 py-1.5">
           {list.map((row) => (
             <li key={row.ref.id} className="border-b border-line-soft py-2.5 last:border-0">
               {editing === row.ref.id ? (
@@ -181,7 +181,7 @@ export function ScheduledManager({
           )}
         </ul>
         {adding === flow ? (
-          <div className="rounded-[20px] bg-white p-4">
+          <div className="rounded-[20px] bg-card p-4">
             <ScheduledForm
               accounts={accounts}
               initial={blankInput(flow, today)}
@@ -196,7 +196,7 @@ export function ScheduledManager({
               setAdding(flow);
               setEditing(null);
             }}
-            className="h-[52px] rounded-[20px] border-2 border-dashed border-line font-extrabold text-ink hover:bg-white"
+            className="h-[52px] rounded-[20px] border-2 border-dashed border-line font-extrabold text-ink hover:bg-card"
           >
             {flow === "in" ? "+ Add income" : "+ Add expense"}
           </button>
@@ -549,7 +549,7 @@ function ScheduledForm({
               aria-pressed={category === c.key}
               onClick={() => setCategories((cs) => ({ ...cs, [flow]: c.key }))}
               className={`flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-extrabold ${
-                category === c.key ? "bg-ink text-white" : "bg-mint text-ink hover:bg-sea-tint"
+                category === c.key ? "bg-ink text-mint" : "bg-mint text-ink hover:bg-sea-tint"
               }`}
             >
               <PathIcon d={c.icon} size={16} />

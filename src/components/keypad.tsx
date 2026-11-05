@@ -29,9 +29,9 @@ const KEYS: KeyDef[] = [
 ];
 
 const KEY_STYLE = {
-  num: "bg-white font-medium",
+  num: "bg-card font-medium",
   op: "bg-sun-tint font-semibold",
-  fn: "bg-[#e3efe8] font-semibold",
+  fn: "bg-key font-semibold",
   eq: "bg-sea font-semibold text-white",
 };
 

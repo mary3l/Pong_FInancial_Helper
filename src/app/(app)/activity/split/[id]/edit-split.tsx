@@ -96,7 +96,7 @@ export function EditSplit({
         e.preventDefault();
         save();
       }}
-      className="flex flex-col gap-3 rounded-[20px] bg-white p-4"
+      className="flex flex-col gap-3 rounded-[20px] bg-card p-4"
     >
       <h2 className="text-sm font-extrabold">Edit this split</h2>
       <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,10rem)] gap-2.5">

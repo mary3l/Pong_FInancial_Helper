@@ -16,7 +16,7 @@ export function ChoiceChip({
       aria-pressed={selected}
       onClick={onClick}
       className={`h-10 shrink-0 rounded-full px-4 text-sm font-extrabold ${
-        selected ? "bg-ink text-white" : "bg-white text-ink hover:bg-sea-tint"
+        selected ? "bg-ink text-mint" : "bg-card text-ink hover:bg-sea-tint"
       } ${className}`}
     >
       {children}
@@ -25,4 +25,4 @@ export function ChoiceChip({
 }
 
 export const FIELD_CLASS =
-  "h-12 min-w-0 rounded-[14px] border-2 border-line bg-white px-4 text-base outline-none focus:border-sea";
+  "h-12 min-w-0 rounded-[14px] border-2 border-line bg-card px-4 text-base outline-none focus:border-sea";

@@ -74,7 +74,7 @@ export function GroceryMode({
   if (!loaded) return <div aria-busy="true" className="h-[640px] rounded-[20px] bg-line-soft" />;
   if (!wallets.length) {
     return (
-      <div className="flex flex-col items-center gap-3 rounded-3xl bg-white px-6 py-10 text-center">
+      <div className="flex flex-col items-center gap-3 rounded-3xl bg-card px-6 py-10 text-center">
         <Pong mood="ask" size={100} decorative />
         <p className="text-[15px] text-muted">Add a wallet first, so I know what you&apos;ll pay with.</p>
         <Link href="/money" className="font-extrabold text-sea-dark underline">Add a wallet</Link>
@@ -114,7 +114,7 @@ export function GroceryMode({
     );
   }
   return (
-    <div className="flex flex-col items-center gap-4 rounded-3xl bg-white px-6 py-10 text-center">
+    <div className="flex flex-col items-center gap-4 rounded-3xl bg-card px-6 py-10 text-center">
       <Pong mood="proud" size={120} decorative />
       <h1 className="font-display text-2xl font-semibold">Groceries saved!</h1>
       <p className="max-w-xs text-[15px] text-muted">One Groceries expense with your items attached. I remembered the prices for next time.</p>
@@ -187,7 +187,7 @@ function StartTrip({
         </div>
       </div>
 
-      <div className="flex flex-col items-center gap-1 rounded-[20px] bg-white p-4">
+      <div className="flex flex-col items-center gap-1 rounded-[20px] bg-card p-4">
         <label htmlFor="trip-budget" className="text-[13px] font-extrabold text-muted">BUDGET FOR THIS TRIP</label>
         <AmountInput
           id="trip-budget"
@@ -218,7 +218,7 @@ function StartTrip({
                 setStore(s);
                 setOther(false);
               }}
-              className={!other && store === s ? "" : "bg-white"}
+              className={!other && store === s ? "" : "bg-card"}
             >
               {s}
             </ChoiceChip>
@@ -229,7 +229,7 @@ function StartTrip({
               setOther(true);
               setStore("");
             }}
-            className={other ? "" : "bg-white"}
+            className={other ? "" : "bg-card"}
           >
             + Other
           </ChoiceChip>
@@ -243,7 +243,7 @@ function StartTrip({
         <span className="text-xs text-muted">Prices are remembered per store.</span>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 rounded-[20px] bg-white p-4">
+      <div className="grid grid-cols-2 gap-3 rounded-[20px] bg-card p-4">
         <div className="flex flex-col gap-1">
           <label htmlFor="trip-wallet" className="text-sm font-bold">Pay with</label>
           <select id="trip-wallet" value={accountId} onChange={(e) => setAccountId(e.target.value)} className={FIELD_CLASS}>
@@ -366,7 +366,7 @@ function Scanning({
 
       <section
         aria-live="polite"
-        className={`flex items-center gap-2 rounded-[22px] p-4 ${status.tone === "over" ? "bg-coral text-white" : status.tone === "careful" ? "bg-sun-tint" : "bg-white"}`}
+        className={`flex items-center gap-2 rounded-[22px] p-4 ${status.tone === "over" ? "bg-coral text-white" : status.tone === "careful" ? "bg-sun-tint" : "bg-card"}`}
       >
         <div className="flex min-w-0 flex-1 flex-col gap-2">
           <div className="flex items-baseline justify-between gap-2">
@@ -383,7 +383,7 @@ function Scanning({
               className={`h-3 overflow-hidden rounded-full ${status.tone === "over" ? "bg-white/40" : "bg-line"}`}
             >
               <div
-                className={`h-full rounded-full ${status.tone === "over" ? "bg-white" : status.tone === "careful" ? "bg-sun" : "bg-sea"}`}
+                className={`h-full rounded-full ${status.tone === "over" ? "bg-card" : status.tone === "careful" ? "bg-sun" : "bg-sea"}`}
                 style={{ width: `${status.pct}%` }}
               />
             </div>
@@ -400,14 +400,14 @@ function Scanning({
           <button type="button" onClick={() => setScanning(true)} className="h-[52px] rounded-[18px] bg-sea font-extrabold text-white">
             Scan barcode
           </button>
-          <button type="button" onClick={undo} disabled={!history.length} className="h-[52px] rounded-[18px] bg-white px-5 font-extrabold text-ink disabled:opacity-50">
+          <button type="button" onClick={undo} disabled={!history.length} className="h-[52px] rounded-[18px] bg-card px-5 font-extrabold text-ink disabled:opacity-50">
             Undo
           </button>
         </div>
       )}
 
       {last && (
-        <p role="status" className="rounded-2xl bg-white px-4 py-2.5 text-[15px]">
+        <p role="status" className="rounded-2xl bg-card px-4 py-2.5 text-[15px]">
           <strong>{last.name}</strong> {last.note === "removed" ? "removed" : `added · ${last.note}`}
         </p>
       )}
@@ -424,7 +424,7 @@ function Scanning({
             add({ barcode: unknown, name: unknownName.trim() || "Item", price: value });
             setUnknown(null);
           }}
-          className="flex flex-col gap-2 rounded-[20px] bg-white p-4"
+          className="flex flex-col gap-2 rounded-[20px] bg-card p-4"
         >
           <span className="text-sm font-extrabold">New item · I&apos;ll remember it next time</span>
           <div className="grid grid-cols-[minmax(0,1fr)_8rem] gap-2">
@@ -463,11 +463,11 @@ function Scanning({
           <label htmlFor="manual-price" className="text-xs font-extrabold">Price</label>
           <AmountInput id="manual-price" value={price} onChange={setPrice} placeholder="₱ 0" className={`${FIELD_CLASS} pl-3 text-right`} />
         </div>
-        <button type="submit" className="h-12 rounded-[14px] bg-white px-4 font-extrabold text-ink">Add</button>
+        <button type="submit" className="h-12 rounded-[14px] bg-card px-4 font-extrabold text-ink">Add</button>
       </form>
       <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
 
-      <ul className="flex flex-col rounded-[20px] bg-white px-4 py-1">
+      <ul className="flex flex-col rounded-[20px] bg-card px-4 py-1">
         {trip.items.map((item) => (
           <li key={item.key} className="flex items-center gap-2 border-b border-line-soft py-2.5 last:border-0">
             <span className="flex min-w-0 flex-1 flex-col">
@@ -488,7 +488,7 @@ function Scanning({
       <p className="text-xs text-muted">
         Scanned items are a draft, not spending yet. Your cart is saved on this phone, even with weak signal.
       </p>
-      <button type="button" onClick={onCheckout} disabled={!trip.items.length} className="sticky bottom-24 h-14 rounded-[20px] bg-ink text-lg font-extrabold text-white disabled:opacity-60 lg:bottom-4">
+      <button type="button" onClick={onCheckout} disabled={!trip.items.length} className="sticky bottom-24 h-14 rounded-[20px] bg-ink text-lg font-extrabold text-mint disabled:opacity-60 lg:bottom-4">
         Done shopping · {formatPeso(total)}
       </button>
     </div>
@@ -531,7 +531,7 @@ function Checkout({
         <p className="text-[15px] text-muted">Type the total on your receipt. That&apos;s the amount that gets saved.</p>
       </div>
 
-      <div className="flex flex-col gap-3 rounded-[20px] bg-white p-4">
+      <div className="flex flex-col gap-3 rounded-[20px] bg-card p-4">
         <div className="flex justify-between text-[15px]">
           <span>Scanned total ({cartCount(trip.items)} items)</span>
           <span className="font-extrabold">{formatPeso(scanned)}</span>
@@ -550,7 +550,7 @@ function Checkout({
       </div>
       {valid && <p className="rounded-2xl bg-sun-tint px-4 py-3 text-sm leading-relaxed">{receiptNote(scanned, value)} Scanned prices go to price memory either way.</p>}
 
-      <section aria-labelledby="saved-heading" className="flex flex-col gap-2 rounded-[20px] bg-white p-4 text-[15px]">
+      <section aria-labelledby="saved-heading" className="flex flex-col gap-2 rounded-[20px] bg-card p-4 text-[15px]">
         <h2 id="saved-heading" className="text-[13px] font-extrabold text-muted">WHAT GETS SAVED</h2>
         <div className="flex justify-between"><span>1 expense · Groceries</span><span className="font-extrabold">{valid ? formatPeso(value) : "—"}</span></div>
         <div className="flex items-center justify-between gap-3">

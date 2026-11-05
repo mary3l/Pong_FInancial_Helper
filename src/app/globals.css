@@ -4,6 +4,8 @@
 @theme {
   --color-sea: #13795a;
   --color-sea-dark: #0e5c44;
+  /* The dark green behind things on a sea card; the same in both themes. */
+  --color-sea-deep: #0e5c44;
   --color-sea-light: #1a8a66;
   --color-sea-tint: #dff3ea;
   --color-sea-text: #e6f7ef;
@@ -11,6 +13,9 @@
   --color-sun-tint: #fff3cc;
   --color-sun-text: #8a5a00;
   --color-mint: #f4faf6;
+  /* Cards and fields on the mint page. */
+  --color-card: #ffffff;
+  --color-key: #e3efe8;
   --color-coral: #c43d22;
   --color-coral-tint: #fde6df;
   --color-coral-text: #a3321b;
@@ -20,9 +25,53 @@
   --color-muted: #4d6b63;
   --color-line: #dcebe3;
   --color-line-soft: #eaf3ee;
+  /* Behind dialogs and the camera. */
+  --color-scrim: #12302a;
 
   --font-display: var(--font-fredoka), system-ui, sans-serif;
   --font-sans: var(--font-nunito), system-ui, sans-serif;
+}
+
+/*
+ * Dark mode. The script in the root layout sets data-theme on <html> from the
+ * choice in Settings, or from the phone's setting when it's "System".
+ * Mint is the page, card sits on it, ink is the text: they swap brightness,
+ * and the tints become deep versions of themselves.
+ */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-sea: #178a66;
+  --color-sea-dark: #7fd6b0;
+  --color-sea-light: #1f9873;
+  --color-sea-tint: #183d31;
+  --color-sun-tint: #3a3116;
+  --color-sun-text: #f3c860;
+  --color-mint: #0e1a17;
+  --color-card: #172722;
+  --color-key: #22362f;
+  --color-coral: #d24a2e;
+  --color-coral-tint: #3f2019;
+  --color-coral-text: #ff9f86;
+  --color-sky-tint: #182b3f;
+  --color-plum-tint: #2a2340;
+  --color-ink: #e2efe9;
+  --color-muted: #97b3aa;
+  --color-line: #2b403a;
+  --color-line-soft: #213530;
+  --color-scrim: #000000;
+}
+
+/* dark:… classes, for the few things that differ beyond the colors. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* Sea is dark enough for white on a sea button; green text needs it lighter. */
+:root[data-theme="dark"] .text-sea {
+  color: #3dbb8c;
+}
+
+/* Yellow stays yellow in the dark, so what's written on it stays dark. */
+.bg-sun {
+  --color-ink: #12302a;
 }
 
 body {

@@ -83,7 +83,7 @@ async function PersonDetail({ params }: Pick<PageProps<"/money/people/[id]">, "p
 
       <section aria-labelledby="history-heading" className="flex flex-col gap-2">
         <h2 id="history-heading" className="font-display text-xl font-semibold">History</h2>
-        <ul className="flex flex-col rounded-[20px] bg-white px-4 py-1.5">
+        <ul className="flex flex-col rounded-[20px] bg-card px-4 py-1.5">
           {history.map((t) => {
             const entry = person.entries.find((e) => e.transactionId === t.id);
             const change = balanceEffect(t, person.id);

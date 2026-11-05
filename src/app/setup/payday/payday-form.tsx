@@ -164,7 +164,7 @@ export function PaydayForm({
 
   return (
     <div className="flex flex-1 flex-col gap-6">
-      <section className="flex flex-col gap-4 rounded-3xl bg-white p-5">
+      <section className="flex flex-col gap-4 rounded-3xl bg-card p-5">
         <h2 id="pay-kind" className="font-display text-xl font-semibold">How do you get paid?</h2>
         <div role="group" aria-labelledby="pay-kind" className="flex flex-wrap gap-2">
           {PAY_KINDS.map((k) => (
@@ -246,7 +246,7 @@ export function PaydayForm({
         </div>
 
         {rows.map((row) => (
-          <div key={row.key} className="flex flex-col gap-3 rounded-[20px] bg-white p-4">
+          <div key={row.key} className="flex flex-col gap-3 rounded-[20px] bg-card p-4">
             <div className="flex gap-3">
               <div className="flex flex-1 flex-col gap-1">
                 <label htmlFor={`bill-name-${row.key}`} className="text-sm font-bold">Bill</label>
@@ -292,7 +292,7 @@ export function PaydayForm({
                 key={idea}
                 type="button"
                 onClick={() => addBill(idea)}
-                className="h-10 rounded-full bg-white px-4 text-sm font-extrabold text-ink hover:bg-sea-tint"
+                className="h-10 rounded-full bg-card px-4 text-sm font-extrabold text-ink hover:bg-sea-tint"
               >
                 + {idea}
               </button>
@@ -302,7 +302,7 @@ export function PaydayForm({
         <button
           type="button"
           onClick={() => addBill()}
-          className="h-[52px] rounded-[20px] border-2 border-dashed border-line font-extrabold text-ink hover:bg-white"
+          className="h-[52px] rounded-[20px] border-2 border-dashed border-line font-extrabold text-ink hover:bg-card"
         >
           + Add a bill
         </button>

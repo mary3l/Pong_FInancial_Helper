@@ -74,7 +74,7 @@ async function SplitDetail({ params, searchParams }: PageProps<"/activity/split/
         <ChevronIcon direction="left" size={18} /> {fromPeople ? "Utang & pautang" : "Activity"}
       </Link>
 
-      <section className="flex flex-col items-center gap-1 rounded-[28px] bg-white px-6 py-6 text-center">
+      <section className="flex flex-col items-center gap-1 rounded-[28px] bg-card px-6 py-6 text-center">
         <span className={`mb-1 flex h-12 w-12 items-center justify-center rounded-2xl ${info.tint}`}>
           <PathIcon d={info.icon} size={24} />
         </span>
@@ -86,7 +86,7 @@ async function SplitDetail({ params, searchParams }: PageProps<"/activity/split/
         </span>
       </section>
 
-      <div className="flex min-h-14 items-center gap-2 rounded-[18px] bg-white py-1 pr-3 pl-1">
+      <div className="flex min-h-14 items-center gap-2 rounded-[18px] bg-card py-1 pr-3 pl-1">
         <Pong mood={stillOwed === 0 ? "proud" : "happy"} size={52} decorative />
         <p className="text-sm leading-snug lg:text-[15px]">
           Your share is {formatPeso(split.mine?.amount ?? 0)}.{" "}
@@ -98,7 +98,7 @@ async function SplitDetail({ params, searchParams }: PageProps<"/activity/split/
         </p>
       </div>
 
-      <section aria-labelledby="breakdown-label" className="rounded-[20px] bg-white px-4 py-3">
+      <section aria-labelledby="breakdown-label" className="rounded-[20px] bg-card px-4 py-3">
         <h2 id="breakdown-label" className="pb-1 text-[13px] font-extrabold text-muted">
           BREAKDOWN · {rows.length} {rows.length === 1 ? "SHARE" : "SHARES"}
         </h2>
@@ -124,7 +124,7 @@ async function SplitDetail({ params, searchParams }: PageProps<"/activity/split/
       </section>
 
       {credit && (
-        <section className="flex flex-wrap items-center justify-between gap-3 rounded-[20px] bg-white px-4 py-3.5">
+        <section className="flex flex-wrap items-center justify-between gap-3 rounded-[20px] bg-card px-4 py-3.5">
           {plan ? (
             <>
               <span className="flex min-w-0 flex-col">

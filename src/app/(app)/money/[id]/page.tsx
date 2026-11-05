@@ -106,7 +106,7 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
               aria-valuemin={0}
               aria-valuemax={100}
               aria-valuenow={Math.min(100, Math.round((owed / account.creditLimit) * 100))}
-              className="h-2.5 overflow-hidden rounded-full bg-sea-dark"
+              className="h-2.5 overflow-hidden rounded-full bg-sea-deep"
             >
               <div className="h-full rounded-full bg-sun" style={{ width: `${Math.min(100, (owed / account.creditLimit) * 100)}%` }} />
             </div>
@@ -126,7 +126,7 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
       </section>
 
       {next && (
-        <section className="flex flex-wrap items-center justify-between gap-3 rounded-[20px] bg-white px-4 py-3.5">
+        <section className="flex flex-wrap items-center justify-between gap-3 rounded-[20px] bg-card px-4 py-3.5">
           <div className="flex flex-col">
             <span className={`text-[13px] font-bold ${next.dueOn < today ? "text-coral-text" : "text-muted"}`}>
               Next bill · {formatShortDay(next.dueOn, today)} · {dueText(next.dueOn, today)}
@@ -155,7 +155,7 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
 
       <section aria-labelledby="plans-heading" className="flex flex-col gap-2">
         <h2 id="plans-heading" className="font-display text-xl font-semibold">{credit ? "Active plans" : "Payment plan"}</h2>
-        <ul className="flex flex-col rounded-[20px] bg-white px-4 py-1.5">
+        <ul className="flex flex-col rounded-[20px] bg-card px-4 py-1.5">
           {plans.map((plan) => {
             const paidCount = plan.months - plan.payments.filter((p) => !p.transactionId).length;
             const each = plan.payments[0]?.amount ?? 0;
@@ -189,7 +189,7 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
       {credit && notOnBill.length > 0 && (
         <section aria-labelledby="splits-heading" className="flex flex-col gap-2">
           <h2 id="splits-heading" className="font-display text-xl font-semibold">Split bills not on a bill yet</h2>
-          <div className="flex flex-col gap-3 rounded-[20px] bg-white px-4 py-3.5">
+          <div className="flex flex-col gap-3 rounded-[20px] bg-card px-4 py-3.5">
             <p className="text-sm leading-snug text-muted">
               You split {notOnBill.length === 1 ? "this" : `these ${notOnBill.length}`} with {account.name} before splits
               went on its bill. {formatPeso(notOnBillTotal)} is in what you owe, but not in Pay bill or your forecast yet.
@@ -229,7 +229,7 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
             <section
               key={bill.dueOn}
               aria-label={`${formatShortDay(bill.dueOn, today)} bill`}
-              className="flex flex-col rounded-[20px] bg-white px-4 py-1.5"
+              className="flex flex-col rounded-[20px] bg-card px-4 py-1.5"
             >
               <div className="flex items-baseline justify-between gap-3 border-b-2 border-line-soft py-2.5">
                 <span className="flex flex-col">

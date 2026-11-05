@@ -81,7 +81,7 @@ export function WidgetSetup({ keyMadeOn }: { keyMadeOn: string | null }) {
             rows={3}
             value={made.setupCode}
             onFocus={(e) => e.currentTarget.select()}
-            className="rounded-[14px] border-2 border-line bg-white p-3 font-mono text-xs break-all"
+            className="rounded-[14px] border-2 border-line bg-card p-3 font-mono text-xs break-all"
           />
           <button
             type="button"

@@ -85,7 +85,7 @@ async function Budgets({ searchParams }: Pick<PageProps<"/plan/budgets">, "searc
             aria-valuemin={0}
             aria-valuemax={100}
             aria-valuenow={Math.min(100, Math.round((used / budgeted) * 100))}
-            className="mt-2 h-2.5 overflow-hidden rounded-full bg-sea-dark"
+            className="mt-2 h-2.5 overflow-hidden rounded-full bg-sea-deep"
           >
             <div className={`h-full rounded-full ${left < 0 ? "bg-coral" : "bg-sun"}`} style={{ width: `${Math.min(100, (used / budgeted) * 100)}%` }} />
           </div>

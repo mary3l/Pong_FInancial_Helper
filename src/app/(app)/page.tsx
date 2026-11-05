@@ -5,6 +5,7 @@ import { DisplayNameForm } from "@/components/display-name-form";
 import { ForecastChart } from "@/components/forecast-chart";
 import { LogButton } from "@/components/log-button";
 import { Pong, type PongMood } from "@/components/pong";
+import { ThemeToggle } from "@/components/theme";
 import { TransactionList } from "@/components/transaction-list";
 import { getCurrentUser } from "@/lib/auth";
 import { categoryInfo } from "@/lib/categories";
@@ -48,17 +49,20 @@ async function Header() {
             {user.name ? `Kumusta, ${user.name}!` : "Kumusta!"}
           </h1>
         </div>
-        <Link
-          href="/settings"
-          aria-label="Settings and tools"
-          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-sun font-display text-lg font-semibold text-ink"
-        >
-          {user.name ? user.name.charAt(0).toUpperCase() : <PersonIcon />}
-        </Link>
+        <div className="flex shrink-0 items-center gap-2">
+          <ThemeToggle />
+          <Link
+            href="/settings"
+            aria-label="Settings and tools"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-sun font-display text-lg font-semibold text-ink"
+          >
+            {user.name ? user.name.charAt(0).toUpperCase() : <PersonIcon />}
+          </Link>
+        </div>
       </div>
 
       {!user.name && (
-        <section className="rounded-3xl bg-white p-5">
+        <section className="rounded-3xl bg-card p-5">
           <DisplayNameForm
             initialName={null}
             label="What should I call you?"
@@ -97,7 +101,7 @@ async function Dashboard() {
       <div className="flex flex-col gap-5">
         <div className="flex items-end gap-1">
           <Pong mood={pong.mood} size={92} decorative />
-          <p className="relative mb-5 flex-1 rounded-[20px_20px_20px_6px] bg-white px-3.5 py-3 text-[15px] leading-relaxed shadow-[0_2px_0_var(--color-line)]">
+          <p className="relative mb-5 flex-1 rounded-[20px_20px_20px_6px] bg-card px-3.5 py-3 text-[15px] leading-relaxed shadow-[0_2px_0_var(--color-line)]">
             {pong.message}{" "}
             {pong.link && (
               <Link href={pong.link.href} className="font-extrabold text-sea-dark underline">
@@ -128,7 +132,7 @@ async function Dashboard() {
             <h2 id="due-heading" className="font-display text-xl font-semibold">Coming up</h2>
             <Link href="/plan/scheduled" className="text-sm font-extrabold text-sea">Scheduled ›</Link>
           </div>
-          <div className="rounded-[20px] bg-white px-4 py-1.5">
+          <div className="rounded-[20px] bg-card px-4 py-1.5">
             {dueSoon.length ? (
               <ul className="flex flex-col">
                 {dueSoon.map((item) => (
@@ -157,7 +161,7 @@ async function Dashboard() {
             <h2 id="wallets-heading" className="font-display text-xl font-semibold">Wallets</h2>
             <Link href="/money" className="text-sm font-extrabold text-sea">Money ›</Link>
           </div>
-          <div className="flex flex-col rounded-[20px] bg-white px-4 py-1.5">
+          <div className="flex flex-col rounded-[20px] bg-card px-4 py-1.5">
             {wallets.length ? (
               wallets.map((a) => (
                 <div key={a.id} className="flex items-center justify-between gap-3 border-b border-line-soft py-2.5 last:border-0">
@@ -195,7 +199,7 @@ async function Dashboard() {
         {accounts.length > 0 && (
           <Link
             href="/plan"
-            className="flex flex-col gap-2.5 rounded-[20px] bg-white px-4 py-3.5 text-ink hover:ring-2 hover:ring-sea-tint"
+            className="flex flex-col gap-2.5 rounded-[20px] bg-card px-4 py-3.5 text-ink hover:ring-2 hover:ring-sea-tint"
           >
             <span className="flex items-baseline justify-between">
               <span className="font-display text-xl font-semibold">Next 30 days</span>
@@ -225,7 +229,7 @@ async function Dashboard() {
             <h2 id="recent-heading" className="font-display text-xl font-semibold">Recent activity</h2>
             <Link href="/activity" className="text-sm font-extrabold text-sea">See all ›</Link>
           </div>
-          <div className="rounded-[20px] bg-white px-4 py-1.5">
+          <div className="rounded-[20px] bg-card px-4 py-1.5">
             {recent.length ? (
               <TransactionList transactions={recent} accounts={accounts} today={today} grouped={false} />
             ) : (
@@ -246,7 +250,7 @@ function BudgetsCard({ budgets, spent }: { budgets: Budget[]; spent: { type: str
   const used = (category: string) =>
     roundCents(spent.filter((t) => t.type === "expense" && t.category === category).reduce((sum, t) => sum + t.amount, 0));
   return (
-    <Link href="/plan/budgets" className="hidden flex-col gap-3 rounded-[20px] bg-white px-4 py-3.5 text-ink hover:ring-2 hover:ring-sea-tint lg:flex">
+    <Link href="/plan/budgets" className="hidden flex-col gap-3 rounded-[20px] bg-card px-4 py-3.5 text-ink hover:ring-2 hover:ring-sea-tint lg:flex">
       <span className="flex items-baseline justify-between">
         <span className="font-display text-xl font-semibold">Budgets</span>
         <span className="text-sm font-extrabold text-sea">This kinsenas ›</span>
@@ -327,7 +331,7 @@ function SafeToSpendCard({ sts, setAside, today }: { sts: SafeToSpend; setAside:
             <span className="group-open:hidden">How is this computed?</span>
             <span className="hidden group-open:inline">Hide breakdown</span>
           </summary>
-          <dl className="flex flex-col gap-1.5 rounded-[18px] bg-sea-dark px-4 py-3.5 text-[15px]">
+          <dl className="flex flex-col gap-1.5 rounded-[18px] bg-sea-deep px-4 py-3.5 text-[15px]">
             <BreakdownLine label="Spending money in your wallets" value={formatPeso(sts.inWallets)} />
             <BreakdownLine label={`− Due before payday (${sts.dueCount})`} value={formatPeso(sts.dueBeforePayday)} />
             <BreakdownLine

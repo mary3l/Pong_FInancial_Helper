@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Fredoka, Nunito } from "next/font/google";
 import { ServiceWorker } from "@/components/offline";
+import { ThemeScript } from "@/components/theme";
 import "./globals.css";
 
 const fredoka = Fredoka({
@@ -27,8 +28,14 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
+      data-theme="light"
       className={`${fredoka.variable} ${nunito.variable} h-full antialiased`}
+      // The theme script sets data-theme before React hydrates.
+      suppressHydrationWarning
     >
+      <head>
+        <ThemeScript />
+      </head>
       <body className="min-h-full">
         {children}
         <ServiceWorker />

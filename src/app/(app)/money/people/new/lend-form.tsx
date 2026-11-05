@@ -73,12 +73,12 @@ export function LendForm({
   }
 
   if (!wallets.length) {
-    return <p className="rounded-[20px] bg-white p-5 text-muted">Add a wallet in Money first.</p>;
+    return <p className="rounded-[20px] bg-card p-5 text-muted">Add a wallet in Money first.</p>;
   }
 
   return (
     <form onSubmit={save} className="flex flex-col gap-4">
-      <div role="group" aria-label="Lent or borrowed" className="grid grid-cols-2 gap-1 rounded-2xl bg-white p-1">
+      <div role="group" aria-label="Lent or borrowed" className="grid grid-cols-2 gap-1 rounded-2xl bg-card p-1">
         {(["lend", "borrow"] as const).map((d) => (
           <button
             key={d}
@@ -115,7 +115,7 @@ export function LendForm({
                   setPersonId(p.id);
                   setName("");
                 }}
-                className={personId === p.id ? "" : "bg-white"}
+                className={personId === p.id ? "" : "bg-card"}
               >
                 {p.name}
               </ChoiceChip>
@@ -138,7 +138,7 @@ export function LendForm({
         />
       </div>
 
-      <div className="flex flex-col gap-3 rounded-[20px] bg-white p-4">
+      <div className="flex flex-col gap-3 rounded-[20px] bg-card p-4">
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1">
             <label htmlFor="lend-wallet" className="text-sm font-bold">{lend ? "Sent from" : "Received in"}</label>

@@ -67,7 +67,7 @@ export function WalletManager({
               </span>
             </h3>
           )}
-          <ul className="flex flex-col rounded-[20px] bg-white px-4 py-1.5">
+          <ul className="flex flex-col rounded-[20px] bg-card px-4 py-1.5">
             {group.wallets.map((a) => (
               <li key={a.id} className="border-b border-line-soft py-2.5 last:border-0">
                 {editing === a.id ? (
@@ -116,7 +116,7 @@ export function WalletManager({
       ))}
 
       {adding ? (
-        <div className="rounded-[20px] bg-white p-4">
+        <div className="rounded-[20px] bg-card p-4">
           <WalletForm onCancel={() => setAdding(false)} onDone={() => setAdding(false)} />
         </div>
       ) : (
@@ -126,7 +126,7 @@ export function WalletManager({
             setAdding(true);
             setNotice(null);
           }}
-          className="h-[52px] rounded-[20px] border-2 border-dashed border-line font-extrabold text-ink hover:bg-white"
+          className="h-[52px] rounded-[20px] border-2 border-dashed border-line font-extrabold text-ink hover:bg-card"
         >
           + Add wallet
         </button>
@@ -135,7 +135,7 @@ export function WalletManager({
       {archived.length > 0 && (
         <section aria-labelledby="archived-heading" className="flex flex-col gap-2">
           <h2 id="archived-heading" className="text-[13px] font-extrabold text-muted">ARCHIVED</h2>
-          <ul className="flex flex-col rounded-[20px] bg-white px-4 py-1.5">
+          <ul className="flex flex-col rounded-[20px] bg-card px-4 py-1.5">
             {archived.map((a) => (
               <li key={a.id} className="flex items-center gap-3 border-b border-line-soft py-2 last:border-0">
                 <span className="flex-1 text-muted">{a.name}</span>
@@ -249,7 +249,7 @@ function WalletForm({
             type="button"
             aria-pressed={type === t.value}
             onClick={() => setType(t.value)}
-            className={`h-9 rounded-full px-3.5 text-sm font-extrabold ${type === t.value ? "bg-ink text-white" : "bg-mint text-ink"}`}
+            className={`h-9 rounded-full px-3.5 text-sm font-extrabold ${type === t.value ? "bg-ink text-mint" : "bg-mint text-ink"}`}
           >
             {t.label}
           </button>
@@ -264,7 +264,7 @@ function WalletForm({
               type="button"
               aria-pressed={purpose === p.value}
               onClick={() => setPurpose(p.value)}
-              className={`h-9 rounded-full px-3.5 text-sm font-extrabold ${purpose === p.value ? "bg-ink text-white" : "bg-mint text-ink"}`}
+              className={`h-9 rounded-full px-3.5 text-sm font-extrabold ${purpose === p.value ? "bg-ink text-mint" : "bg-mint text-ink"}`}
             >
               {p.label}
             </button>
@@ -307,7 +307,7 @@ function WalletForm({
                     type="button"
                     aria-pressed={payout === p.value}
                     onClick={() => setPayout(p.value)}
-                    className={`h-9 rounded-full px-3.5 text-sm font-extrabold ${payout === p.value ? "bg-ink text-white" : "bg-mint text-ink"}`}
+                    className={`h-9 rounded-full px-3.5 text-sm font-extrabold ${payout === p.value ? "bg-ink text-mint" : "bg-mint text-ink"}`}
                   >
                     {p.label}
                   </button>
@@ -415,7 +415,7 @@ function InterestRow({ account, accrued, today }: { account: Account; accrued: I
               setAmount(toLog.amount > 0 ? String(toLog.amount) : "");
               setError(null);
             }}
-            className="h-9 rounded-full bg-white px-3 text-sm font-extrabold text-sea-dark"
+            className="h-9 rounded-full bg-card px-3 text-sm font-extrabold text-sea-dark"
           >
             + Add interest
           </button>

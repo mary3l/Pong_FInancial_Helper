@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { signOut } from "@/app/actions";
 import { DisplayNameForm } from "@/components/display-name-form";
 import { ChevronIcon } from "@/components/icons";
+import { ThemePicker } from "@/components/theme";
 import { WidgetSetup } from "@/components/widget-setup";
 import { getCurrentUser } from "@/lib/auth";
 import { getBudgets, getRecurringItems, getWidgetKey } from "@/lib/data";
@@ -48,21 +49,26 @@ export default function SettingsPage() {
         <Row title="Import CSV · Export · Backup" soon />
       </Group>
 
-      <section className="flex flex-col gap-4 rounded-3xl bg-white p-6">
+      <section className="flex flex-col gap-4 rounded-3xl bg-card p-6">
         <h2 className="font-display text-xl font-semibold">Home screen widget</h2>
         <Suspense fallback={<div className="h-40 rounded-[14px] bg-line-soft" />}>
           <Widget />
         </Suspense>
       </section>
 
-      <section className="flex flex-col gap-4 rounded-3xl bg-white p-6">
+      <section className="flex flex-col gap-4 rounded-3xl bg-card p-6">
+        <h2 className="font-display text-xl font-semibold">Appearance</h2>
+        <ThemePicker />
+      </section>
+
+      <section className="flex flex-col gap-4 rounded-3xl bg-card p-6">
         <h2 className="font-display text-xl font-semibold">Profile</h2>
         <Suspense fallback={<div className="h-28 rounded-[14px] bg-line-soft" />}>
           <Profile />
         </Suspense>
       </section>
 
-      <section className="flex flex-col gap-4 rounded-3xl bg-white p-6">
+      <section className="flex flex-col gap-4 rounded-3xl bg-card p-6">
         <h2 className="font-display text-xl font-semibold">Account</h2>
         <Suspense fallback={<p className="h-6 w-56 rounded bg-line-soft" />}>
           <SignedInAs />
@@ -84,7 +90,7 @@ function Group({ title, children }: { title: string; children: React.ReactNode }
   return (
     <section className="flex flex-col gap-2">
       <h2 className="text-[13px] font-extrabold text-muted">{title}</h2>
-      <ul className="flex flex-col rounded-[20px] bg-white px-4 py-1">{children}</ul>
+      <ul className="flex flex-col rounded-[20px] bg-card px-4 py-1">{children}</ul>
     </section>
   );
 }

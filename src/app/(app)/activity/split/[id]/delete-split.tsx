@@ -32,7 +32,7 @@ export function DeleteSplit({ splitId, back }: { splitId: string; back: string }
         onBlur={() => setConfirm(false)}
         disabled={pending}
         className={`h-14 rounded-[18px] font-extrabold disabled:opacity-60 ${
-          confirm ? "bg-coral text-white" : "bg-white text-coral-text"
+          confirm ? "bg-coral text-white" : "bg-card text-coral-text"
         }`}
       >
         {pending ? "Deleting…" : confirm ? "Tap again to delete the whole split" : "Delete this split"}

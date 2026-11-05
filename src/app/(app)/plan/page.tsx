@@ -37,7 +37,7 @@ async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams
 
   if (!accounts.length) {
     return (
-      <div className="flex flex-col items-center gap-3 rounded-3xl bg-white px-6 py-10 text-center">
+      <div className="flex flex-col items-center gap-3 rounded-3xl bg-card px-6 py-10 text-center">
         <Pong mood="ask" size={110} decorative />
         <p className="max-w-xs text-[15px] text-muted">
           Add your wallets first. I&apos;ll project your balance from there.
@@ -63,7 +63,7 @@ async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams
           options={RANGES.map((r) => ({ href: `/plan?days=${r}`, label: `${r} days`, current: r === days }))}
         />
 
-        <section className="flex flex-col gap-2 rounded-[20px] bg-white px-4 pt-4 pb-3">
+        <section className="flex flex-col gap-2 rounded-[20px] bg-card px-4 pt-4 pb-3">
           <div className="flex items-baseline justify-between">
             <h2 className="font-display text-lg font-semibold">Projected balance</h2>
             <span className="text-sm font-bold text-muted">now {formatPeso(inWallets)}</span>
@@ -86,7 +86,7 @@ async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams
           </div>
         </section>
 
-        <section className="flex items-center gap-2 rounded-[20px] bg-white py-2 pr-4 pl-2">
+        <section className="flex items-center gap-2 rounded-[20px] bg-card py-2 pr-4 pl-2">
           <Pong mood={pong} size={64} decorative />
           <div className="flex flex-col gap-0.5">
             <h2 className="text-[13px] font-extrabold text-muted">HEADS UP</h2>
@@ -123,7 +123,7 @@ async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams
 
       <section aria-labelledby="coming-heading" className="flex flex-col gap-2.5">
         <h2 id="coming-heading" className="font-display text-xl font-semibold">What&apos;s coming</h2>
-        <div className="rounded-[20px] bg-white px-4 py-1.5">
+        <div className="rounded-[20px] bg-card px-4 py-1.5">
           {forecast.rows.length ? (
             <ul className="flex flex-col">
               {forecast.rows.map(({ item, date, balanceAfter }) => {

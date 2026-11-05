@@ -52,7 +52,7 @@ async function Activity({ searchParams }: Pick<PageProps<"/activity">, "searchPa
 
   return (
     <>
-      <nav aria-label="Kinsenas" className="flex items-center justify-between rounded-[20px] bg-white px-2 py-2">
+      <nav aria-label="Kinsenas" className="flex items-center justify-between rounded-[20px] bg-card px-2 py-2">
         <Link
           href={href(previousPeriod(period).start)}
           aria-label="Previous kinsenas"
@@ -83,7 +83,7 @@ async function Activity({ searchParams }: Pick<PageProps<"/activity">, "searchPa
           { label: "Out", value: formatPeso(totals.out) },
           { label: "Net", value: formatPeso(totals.net) },
         ].map((s) => (
-          <div key={s.label} className="flex flex-col gap-0.5 rounded-2xl bg-white px-3 py-2.5">
+          <div key={s.label} className="flex flex-col gap-0.5 rounded-2xl bg-card px-3 py-2.5">
             <dt className="text-xs font-bold text-muted">{s.label}</dt>
             <dd className="font-display text-[17px] font-semibold">{s.value}</dd>
           </div>
@@ -99,19 +99,19 @@ async function Activity({ searchParams }: Pick<PageProps<"/activity">, "searchPa
           name="q"
           defaultValue={q}
           placeholder="Search notes, categories"
-          className="h-12 min-w-0 flex-1 rounded-[14px] border-2 border-line bg-white px-4 text-base outline-none focus:border-sea"
+          className="h-12 min-w-0 flex-1 rounded-[14px] border-2 border-line bg-card px-4 text-base outline-none focus:border-sea"
         />
-        <button type="submit" className="h-12 rounded-[14px] bg-white px-4 font-extrabold text-ink hover:bg-sea-tint">
+        <button type="submit" className="h-12 rounded-[14px] bg-card px-4 font-extrabold text-ink hover:bg-sea-tint">
           Search
         </button>
       </Form>
 
       {transactions.length ? (
-        <div className="rounded-[20px] bg-white px-4 pb-2">
+        <div className="rounded-[20px] bg-card px-4 pb-2">
           <TransactionList transactions={transactions} accounts={accounts} today={today} />
         </div>
       ) : (
-        <div className="flex flex-col items-center gap-3 rounded-3xl bg-white px-6 py-10 text-center">
+        <div className="flex flex-col items-center gap-3 rounded-3xl bg-card px-6 py-10 text-center">
           <Pong mood="sleepy" size={100} decorative />
           <p className="max-w-xs text-[15px] text-muted">
             {q

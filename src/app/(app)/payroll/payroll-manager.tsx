@@ -103,7 +103,7 @@ function Notice({ children }: { children: React.ReactNode }) {
 
 function Card({ title, children, aside }: { title: string; children: React.ReactNode; aside?: React.ReactNode }) {
   return (
-    <section className="flex flex-col gap-3 rounded-[20px] bg-white p-4 sm:p-5">
+    <section className="flex flex-col gap-3 rounded-[20px] bg-card p-4 sm:p-5">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="font-display text-xl font-semibold">{title}</h2>
         {aside}
@@ -395,7 +395,7 @@ function CutoffCard({ records, period, payday, today }: { records: PayrollRecord
                             ? "bg-coral font-extrabold text-white"
                             : s.value === "worked"
                               ? "bg-sea font-extrabold text-white"
-                              : "bg-ink font-extrabold text-white"
+                              : "bg-ink font-extrabold text-mint"
                           : "font-bold text-muted hover:text-ink"
                       }`}
                     >
@@ -413,7 +413,7 @@ function CutoffCard({ records, period, payday, today }: { records: PayrollRecord
                     type="time"
                     value={day.timeIn ?? ""}
                     onChange={(e) => update(day.date, { timeIn: e.target.value || null })}
-                    className="h-10 rounded-xl border-2 border-line bg-white px-2 text-[15px] outline-none focus:border-sea"
+                    className="h-10 rounded-xl border-2 border-line bg-card px-2 text-[15px] outline-none focus:border-sea"
                   />
                   {late > 0 ? (
                     <span className="text-sm font-bold text-coral-text">
@@ -435,7 +435,7 @@ function CutoffCard({ records, period, payday, today }: { records: PayrollRecord
                         aria-pressed={day.leaveType === t.value}
                         onClick={() => update(day.date, { leaveType: t.value })}
                         className={`h-9 shrink-0 rounded-full px-3 text-sm font-extrabold ${
-                          day.leaveType === t.value ? "bg-ink text-white" : "bg-mint text-ink hover:bg-sea-tint"
+                          day.leaveType === t.value ? "bg-ink text-mint" : "bg-mint text-ink hover:bg-sea-tint"
                         }`}
                       >
                         {t.label}
@@ -448,7 +448,7 @@ function CutoffCard({ records, period, payday, today }: { records: PayrollRecord
                     maxLength={100}
                     onChange={(e) => update(day.date, { note: e.target.value || null })}
                     placeholder="Reason (optional)"
-                    className="h-10 min-w-0 flex-1 rounded-xl border-2 border-line bg-white px-3 text-[15px] outline-none focus:border-sea"
+                    className="h-10 min-w-0 flex-1 rounded-xl border-2 border-line bg-card px-3 text-[15px] outline-none focus:border-sea"
                   />
                 </div>
               )}
@@ -462,7 +462,7 @@ function CutoffCard({ records, period, payday, today }: { records: PayrollRecord
                     value={o.start}
                     required
                     onChange={(e) => updateOvertime(o.key, { start: e.target.value })}
-                    className="h-10 rounded-xl border-2 border-line bg-white px-2 text-[15px] outline-none focus:border-sea"
+                    className="h-10 rounded-xl border-2 border-line bg-card px-2 text-[15px] outline-none focus:border-sea"
                   />
                   <span aria-hidden="true" className="text-muted">to</span>
                   <input
@@ -471,7 +471,7 @@ function CutoffCard({ records, period, payday, today }: { records: PayrollRecord
                     value={o.end}
                     required
                     onChange={(e) => updateOvertime(o.key, { end: e.target.value })}
-                    className="h-10 rounded-xl border-2 border-line bg-white px-2 text-[15px] outline-none focus:border-sea"
+                    className="h-10 rounded-xl border-2 border-line bg-card px-2 text-[15px] outline-none focus:border-sea"
                   />
                   {o.start && o.end && o.start !== o.end && (
                     <span className="text-sm font-bold text-sea">

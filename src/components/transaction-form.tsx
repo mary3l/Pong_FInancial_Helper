@@ -367,7 +367,7 @@ export function TransactionForm({
   const transferWallets = usableFor("transfer", accounts, keep).filter((a) => a.id !== accountId);
 
   const typePicker = (className: string) => (
-    <div role="group" aria-label="Type" className={`gap-1 rounded-2xl bg-white p-1 ${className}`}>
+    <div role="group" aria-label="Type" className={`gap-1 rounded-2xl bg-card p-1 ${className}`}>
       {TYPES.map((t) => (
         <button
           key={t.value}
@@ -393,7 +393,7 @@ export function TransactionForm({
           aria-pressed={selected === a.id}
           onClick={() => onPick(a.id)}
           className={`h-9 shrink-0 rounded-full px-3.5 text-sm font-extrabold ${
-            selected === a.id ? "bg-ink text-white" : "bg-white text-ink hover:bg-sea-tint"
+            selected === a.id ? "bg-ink text-mint" : "bg-card text-ink hover:bg-sea-tint"
           }`}
         >
           {a.name}
@@ -415,12 +415,12 @@ export function TransactionForm({
       <div className="contents lg:flex lg:min-w-0 lg:flex-1 lg:flex-col lg:gap-3.5">
         <div className="order-1 hidden items-center justify-between lg:order-none lg:flex">
           <h2 className="font-display text-[26px] font-semibold">{title}</h2>
-          <button type="button" onClick={close} aria-label="Close" className="flex h-10 w-10 items-center justify-center rounded-full bg-white">
+          <button type="button" onClick={close} aria-label="Close" className="flex h-10 w-10 items-center justify-center rounded-full bg-card">
             <CloseIcon size={18} />
           </button>
         </div>
 
-        <div aria-live="polite" className="order-2 flex flex-col items-center lg:order-none lg:items-end lg:rounded-[22px] lg:bg-white lg:px-[18px] lg:py-3.5">
+        <div aria-live="polite" className="order-2 flex flex-col items-center lg:order-none lg:items-end lg:rounded-[22px] lg:bg-card lg:px-[18px] lg:py-3.5">
           <span className="min-h-6 text-[17px] font-bold text-muted">
             {hasOperator(calc.expr) ? prettyExpression(calc.expr) : " "}
           </span>
@@ -467,7 +467,7 @@ export function TransactionForm({
         <h2 className="sr-only lg:hidden">{title}</h2>
         {typePicker("hidden self-start lg:flex")}
 
-        <div className="order-3 flex min-h-14 items-center gap-2 rounded-[18px] bg-white py-1 pr-3 pl-1 lg:order-none lg:min-h-[68px] lg:rounded-[20px]">
+        <div className="order-3 flex min-h-14 items-center gap-2 rounded-[18px] bg-card py-1 pr-3 pl-1 lg:order-none lg:min-h-[68px] lg:rounded-[20px]">
           <Pong mood={pong.mood} size={52} decorative />
           <p className="text-sm leading-snug lg:text-[15px]">{pong.line}</p>
         </div>
@@ -481,7 +481,7 @@ export function TransactionForm({
                   key={i}
                   type="button"
                   onClick={() => applyTemplate(t)}
-                  className="h-9 shrink-0 rounded-full border-2 border-dashed border-line bg-white px-3 text-[13px] font-bold hover:border-sea"
+                  className="h-9 shrink-0 rounded-full border-2 border-dashed border-line bg-card px-3 text-[13px] font-bold hover:border-sea"
                 >
                   {templateLabel(t, accounts)}
                 </button>
@@ -500,7 +500,7 @@ export function TransactionForm({
                   type="button"
                   aria-pressed={category === c.key}
                   onClick={() => setCategories((cs) => ({ ...cs, [type]: c.key }))}
-                  className={`flex w-[68px] shrink-0 flex-col items-center gap-1 rounded-2xl border-[2.5px] bg-white px-1 py-1.5 text-xs font-extrabold lg:w-auto ${
+                  className={`flex w-[68px] shrink-0 flex-col items-center gap-1 rounded-2xl border-[2.5px] bg-card px-1 py-1.5 text-xs font-extrabold lg:w-auto ${
                     category === c.key ? "border-sea" : "border-transparent"
                   }`}
                 >
@@ -520,7 +520,7 @@ export function TransactionForm({
         )}
 
         {type === "expense" && !editing && (
-          <div className="order-6 flex flex-col gap-2.5 rounded-[18px] bg-white p-3.5 lg:order-none">
+          <div className="order-6 flex flex-col gap-2.5 rounded-[18px] bg-card p-3.5 lg:order-none">
             <label className="flex items-center justify-between gap-3 text-sm font-extrabold">
               Split this bill
               <input type="checkbox" checked={splitOn} onChange={(e) => toggleSplit(e.target.checked)} className="h-6 w-6 accent-sea" />
@@ -540,7 +540,7 @@ export function TransactionForm({
                         type="button"
                         aria-pressed={on}
                         onClick={() => toggleParticipant(p)}
-                        className={`h-9 rounded-full px-3.5 text-sm font-extrabold ${on ? "bg-ink text-white" : "bg-mint text-ink hover:bg-sea-tint"}`}
+                        className={`h-9 rounded-full px-3.5 text-sm font-extrabold ${on ? "bg-ink text-mint" : "bg-mint text-ink hover:bg-sea-tint"}`}
                       >
                         {p.name}
                       </button>
@@ -577,7 +577,7 @@ export function TransactionForm({
                           type="button"
                           aria-pressed={paidBy === p.key}
                           onClick={() => setPaidBy(p.key)}
-                          className={`h-9 rounded-full px-3.5 text-sm font-extrabold ${paidBy === p.key ? "bg-ink text-white" : "bg-mint text-ink hover:bg-sea-tint"}`}
+                          className={`h-9 rounded-full px-3.5 text-sm font-extrabold ${paidBy === p.key ? "bg-ink text-mint" : "bg-mint text-ink hover:bg-sea-tint"}`}
                         >
                           {p.name}
                         </button>
@@ -590,7 +590,7 @@ export function TransactionForm({
                           type="button"
                           aria-pressed={splitMethod === m}
                           onClick={() => setSplitMethod(m)}
-                          className={`h-8 rounded-lg text-sm ${splitMethod === m ? "bg-white font-extrabold" : "font-bold text-muted"}`}
+                          className={`h-8 rounded-lg text-sm ${splitMethod === m ? "bg-card font-extrabold" : "font-bold text-muted"}`}
                         >
                           {m === "equal" ? "Split equally" : "Exact amounts"}
                         </button>
@@ -657,7 +657,7 @@ export function TransactionForm({
         )}
 
         {withPlan && (
-          <div className="order-7 flex flex-col gap-2.5 rounded-[18px] bg-white p-3.5 lg:order-none">
+          <div className="order-7 flex flex-col gap-2.5 rounded-[18px] bg-card p-3.5 lg:order-none">
             <span id="plan-label" className="text-sm font-extrabold">Payment plan</span>
             <div role="group" aria-labelledby="plan-label" className="flex flex-wrap gap-2">
               {PLAN_MONTHS.map((m) => (
@@ -666,7 +666,7 @@ export function TransactionForm({
                   type="button"
                   aria-pressed={planMonths === m}
                   onClick={() => setPlanMonths(m)}
-                  className={`h-9 rounded-full px-3.5 text-sm font-extrabold ${planMonths === m ? "bg-ink text-white" : "bg-mint text-ink hover:bg-sea-tint"}`}
+                  className={`h-9 rounded-full px-3.5 text-sm font-extrabold ${planMonths === m ? "bg-ink text-mint" : "bg-mint text-ink hover:bg-sea-tint"}`}
                 >
                   {m === 1 ? "Pay next month" : `${m} months`}
                 </button>
@@ -742,7 +742,7 @@ export function TransactionForm({
               value={date}
               required
               onChange={(e) => setDate(e.target.value)}
-              className="h-11 min-w-0 rounded-[14px] bg-white px-3 text-[15px] outline-none focus:ring-2 focus:ring-sea"
+              className="h-11 min-w-0 rounded-[14px] bg-card px-3 text-[15px] outline-none focus:ring-2 focus:ring-sea"
             />
           </div>
           <div className="flex flex-col gap-1">
@@ -753,7 +753,7 @@ export function TransactionForm({
               onChange={(e) => setNote(e.target.value)}
               maxLength={120}
               placeholder="optional"
-              className="h-11 min-w-0 rounded-[14px] bg-white px-3 text-[15px] outline-none focus:ring-2 focus:ring-sea"
+              className="h-11 min-w-0 rounded-[14px] bg-card px-3 text-[15px] outline-none focus:ring-2 focus:ring-sea"
             />
           </div>
         </div>
@@ -774,13 +774,13 @@ export function TransactionForm({
                 onBlur={() => setConfirmDelete(false)}
                 disabled={pending}
                 className={`h-14 flex-1 rounded-[18px] font-extrabold ${
-                  confirmDelete ? "bg-coral text-white" : "bg-white text-coral-text"
+                  confirmDelete ? "bg-coral text-white" : "bg-card text-coral-text"
                 }`}
               >
                 {confirmDelete ? "Tap again to delete" : "Delete"}
               </button>
             ) : (
-              <button type="button" onClick={close} className="hidden h-14 flex-1 rounded-[18px] bg-white font-extrabold lg:block">
+              <button type="button" onClick={close} className="hidden h-14 flex-1 rounded-[18px] bg-card font-extrabold lg:block">
                 Cancel
               </button>
             )}

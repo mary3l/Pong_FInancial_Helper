@@ -36,7 +36,7 @@ export function DisplayNameForm({
           autoComplete="nickname"
           aria-describedby="display_name_hint display_name_status"
           aria-invalid={state.error ? true : undefined}
-          className="h-12 min-w-0 flex-1 basis-48 rounded-[14px] border-2 border-line bg-white px-4 text-base outline-none focus:border-sea"
+          className="h-12 min-w-0 flex-1 basis-48 rounded-[14px] border-2 border-line bg-card px-4 text-base outline-none focus:border-sea"
         />
         <button
           type="submit"

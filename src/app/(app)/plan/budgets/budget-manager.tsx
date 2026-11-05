@@ -31,7 +31,7 @@ export function BudgetManager({ rows, view }: { rows: BudgetRow[]; view: "kinsen
   return (
     <div className="flex flex-col gap-4">
       {rows.length ? (
-        <ul className="flex flex-col rounded-[20px] bg-white px-4 py-1.5">
+        <ul className="flex flex-col rounded-[20px] bg-card px-4 py-1.5">
           {rows.map((r) => (
             <li key={r.id} className="border-b border-line-soft py-3 last:border-0">
               {editing === r.id ? (
@@ -44,7 +44,7 @@ export function BudgetManager({ rows, view }: { rows: BudgetRow[]; view: "kinsen
         </ul>
       ) : (
         !adding && (
-          <div className="flex flex-col items-center gap-3 rounded-3xl bg-white px-6 py-8 text-center">
+          <div className="flex flex-col items-center gap-3 rounded-3xl bg-card px-6 py-8 text-center">
             <Pong mood="listen" size={100} decorative />
             <p className="max-w-xs text-[15px] text-muted">
               Set a limit per kinsenas for things like Food or Groceries, and I&apos;ll tell you when you&apos;re close.
@@ -54,7 +54,7 @@ export function BudgetManager({ rows, view }: { rows: BudgetRow[]; view: "kinsen
       )}
 
       {adding ? (
-        <div className="rounded-[20px] bg-white p-4">
+        <div className="rounded-[20px] bg-card p-4">
           <BudgetForm categories={free} onDone={() => setAdding(false)} />
         </div>
       ) : (
@@ -65,7 +65,7 @@ export function BudgetManager({ rows, view }: { rows: BudgetRow[]; view: "kinsen
               setAdding(true);
               setEditing(null);
             }}
-            className="h-[52px] rounded-[20px] border-2 border-dashed border-line font-extrabold text-ink hover:bg-white"
+            className="h-[52px] rounded-[20px] border-2 border-dashed border-line font-extrabold text-ink hover:bg-card"
           >
             + Add budget
           </button>

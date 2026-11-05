@@ -61,7 +61,7 @@ export function ForecastChart({
       {lowIndex !== undefined && (
         <span
           aria-hidden="true"
-          className={`absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white ${low!.balance < 0 ? "bg-coral" : "bg-ink"}`}
+          className={`absolute h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-card ${low!.balance < 0 ? "bg-coral" : "bg-ink"}`}
           style={{ left: `${(x(lowIndex) / W) * 100}%`, top: y(low!.balance) }}
         />
       )}

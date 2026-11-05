@@ -14,7 +14,7 @@ export default function NewCreditLinePage() {
         Purchases on it show up in your spending right away; paying the bill
         just moves money from GCash or your bank.
       </p>
-      <div className="rounded-[20px] bg-white p-4">
+      <div className="rounded-[20px] bg-card p-4">
         <CreditLineForm />
       </div>
     </div>

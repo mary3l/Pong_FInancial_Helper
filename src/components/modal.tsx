@@ -42,7 +42,7 @@ function ModalDialog({ label, children }: { label: string; children: React.React
         e.preventDefault();
         router.back();
       }}
-      className="m-0 h-dvh max-h-none w-full max-w-none overflow-y-auto bg-mint p-0 text-ink backdrop:bg-ink/50 lg:m-auto lg:h-auto lg:max-h-[calc(100dvh-48px)] lg:w-[calc(100%-48px)] lg:max-w-[980px] lg:rounded-[32px] lg:shadow-[0_24px_60px_rgba(18,48,42,0.35)]"
+      className="m-0 h-dvh max-h-none w-full max-w-none overflow-y-auto bg-mint p-0 text-ink backdrop:bg-scrim/50 lg:m-auto lg:h-auto lg:max-h-[calc(100dvh-48px)] lg:w-[calc(100%-48px)] lg:max-w-[980px] lg:rounded-[32px] lg:shadow-[0_24px_60px_rgba(18,48,42,0.35)]"
     >
       {children}
     </dialog>
