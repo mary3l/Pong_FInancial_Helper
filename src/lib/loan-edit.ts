@@ -1,5 +1,5 @@
 import { monthlyDates, splitAmount } from "@/lib/forecast";
-import type { PaymentRow } from "@/lib/installments";
+import { loanPayment, type PaymentRow } from "@/lib/installments";
 import { roundCents } from "@/lib/money";
 
 // Editing a loan after it's saved: payments already made stay as they are,
@@ -78,7 +78,7 @@ export function editLoan(saved: SavedPayment[], edit: LoanEdit): EditedLoan | { 
   const dates = monthlyDates(edit.nextDue, seqs.length);
   const rows = seqs.map((seq, i) => {
     const principalPart = principals[i];
-    const feePart = roundCents(Math.max(0, edit.monthly - principalPart));
+    const feePart = roundCents(Math.max(0, loanPayment(edit.monthly, edit.months, seq) - principalPart));
     return { seq, dueOn: dates[i], principalPart, feePart, amount: roundCents(principalPart + feePart) };
   });
   const feeTotal = roundCents(

@@ -189,6 +189,21 @@ export function parseAmount(text: string): number {
   return roundCents(Number(cleaned));
 }
 
+/**
+ * A rate like a loan's monthly payment, quoted to more than centavos
+ * (SLoan's ₱944.585). Up to 4 decimals, kept exact. NaN when it isn't one.
+ */
+export function parseExactAmount(text: string): number {
+  const cleaned = text.replace(/[₱,\s]/g, "");
+  if (!/^\d+(\.\d{0,4})?$|^\.\d{1,4}$/.test(cleaned)) return NaN;
+  return Math.round(Number(cleaned) * 10000) / 10000;
+}
+
+/** To centavos, half up, without float slips: 944.585 is ₱944.59, not ₱944.58. */
+export function roundHalfUp(value: number): number {
+  return Math.round(Number((value * 100).toFixed(6))) / 100;
+}
+
 const WHOLE = new Intl.NumberFormat("en-PH", {
   style: "currency",
   currency: "PHP",

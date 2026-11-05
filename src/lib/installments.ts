@@ -1,6 +1,6 @@
 import { addDays, daysBetween } from "@/lib/dates";
 import { monthlyDates, splitAmount } from "@/lib/forecast";
-import { roundCents } from "@/lib/money";
+import { roundCents, roundHalfUp } from "@/lib/money";
 import { nextOccurrence } from "@/lib/schedule";
 
 // BNPL and loan schedules (design canvas row 4). Pure, so the Add form can
@@ -80,8 +80,18 @@ export type LoanSummary = {
   ratePerMonth: number;
 };
 
+/**
+ * Payment `seq` of a loan. Lenders quote the monthly payment past centavos
+ * (SLoan's ₱3,100.7216): each is that rounded, and the last takes what's
+ * left so they add up to the total, like ₱3,100.72 × 5 and ₱3,100.73.
+ */
+export function loanPayment(monthly: number, months: number, seq: number): number {
+  const each = roundHalfUp(monthly);
+  return seq < months ? each : roundCents(roundHalfUp(monthly * months) - each * (months - 1));
+}
+
 export function loanSummary({ received, monthly, months }: LoanTerms): LoanSummary {
-  const total = roundCents(monthly * months);
+  const total = roundHalfUp(monthly * months);
   const interest = roundCents(Math.max(0, total - received));
   return {
     total,
@@ -103,7 +113,7 @@ export function loanSchedule(
   const principals = splitAmount(received, months);
   const dates = monthlyDates(nextDue, months - alreadyPaid);
   return principals.slice(alreadyPaid).map((principalPart, i) => {
-    const feePart = roundCents(Math.max(0, monthly - principalPart));
+    const feePart = roundCents(Math.max(0, loanPayment(monthly, months, alreadyPaid + i + 1) - principalPart));
     return {
       seq: alreadyPaid + i + 1,
       dueOn: dates[i],

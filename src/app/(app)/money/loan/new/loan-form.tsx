@@ -9,7 +9,7 @@ import type { Account } from "@/lib/data";
 import { formatShortDay, isValidDate } from "@/lib/dates";
 import { monthlyDates } from "@/lib/forecast";
 import { loanSchedule, loanSummary, runningLoan } from "@/lib/installments";
-import { formatPeso, parseAmount, roundCents } from "@/lib/money";
+import { formatPeso, parseAmount, parseExactAmount, roundCents } from "@/lib/money";
 
 const PROVIDERS = ["SLoan", "MariLoan", "GLoan", "Pag-IBIG", "SSS"];
 
@@ -34,7 +34,7 @@ export function LoanForm({ wallets, today }: { wallets: Account[]; today: string
 
   const terms = {
     received: parseAmount(received),
-    monthly: parseAmount(monthly),
+    monthly: parseExactAmount(monthly),
     months: Number(months),
   };
   const running = mode === "running";
@@ -60,10 +60,19 @@ export function LoanForm({ wallets, today }: { wallets: Account[]; today: string
     e.preventDefault();
     setError(null);
     if (!valid) {
+      const amountLabel = running ? "loan amount" : "amount received";
       setError(
-        fullyPaid
-          ? "Every payment's due date has passed, so this loan looks paid off. Check the first due date or payments made."
-          : `Fill in the ${running ? "loan amount" : "amount received"}, monthly payment and months.`,
+        !received.trim() || !monthly.trim()
+          ? `Fill in the ${amountLabel} and the monthly payment.`
+          : !(terms.received > 0)
+            ? `Check the ${amountLabel}: a number with up to 2 decimals.`
+            : !(terms.monthly > 0)
+              ? "Check the monthly payment: a number with up to 4 decimals."
+              : !monthsOk
+                ? "Months should be a whole number from 1 to 60."
+                : fullyPaid
+                  ? "Every payment's due date has passed, so this loan looks paid off. Check the first due date or payments made."
+                  : `Pick when the ${running ? "1st payment was" : "first payment is"} due.`,
       );
       return;
     }

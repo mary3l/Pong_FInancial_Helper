@@ -20,6 +20,11 @@ function cleanName(name: unknown) {
   return String(name ?? "").replace(/\s+/g, " ").trim();
 }
 
+/** A monthly payment as the lender quotes it, to 4 decimals (SLoan's ₱944.585). Rounded per payment in the schedule. */
+function exactRate(value: number) {
+  return Math.round(value * 10000) / 10000;
+}
+
 function validAmount(value: number, allowZero = false) {
   return Number.isFinite(value) && (allowZero ? value >= 0 : value > 0) && value <= MAX_AMOUNT;
 }
@@ -226,7 +231,7 @@ export async function addLoan(input: LoanInput): Promise<CreditResult> {
   if (!supabase) return { error: SIGNED_OUT_ERROR };
 
   const received = roundCents(input.received);
-  const rows = loanSchedule({ received, monthly: roundCents(input.monthly), months: input.months }, input.nextDue, input.alreadyPaid);
+  const rows = loanSchedule({ received, monthly: exactRate(input.monthly), months: input.months }, input.nextDue, input.alreadyPaid);
   const owed = roundCents(rows.reduce((sum, r) => sum + r.principalPart, 0));
   const name = cleanName(input.name);
 
@@ -351,7 +356,7 @@ export async function updateLoan(accountId: string, input: LoanUpdate): Promise<
     })),
     {
       received: roundCents(input.received),
-      monthly: roundCents(input.monthly),
+      monthly: exactRate(input.monthly),
       months: input.months,
       nextDue: input.nextDue,
       paidBefore: plan.source_txn_id ? undefined : input.paidBefore,

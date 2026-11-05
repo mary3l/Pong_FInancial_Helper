@@ -7,7 +7,7 @@ import { FIELD_CLASS } from "@/components/choice-chip";
 import type { Account, InstallmentPlan } from "@/lib/data";
 import { formatShortDay, isValidDate } from "@/lib/dates";
 import { editLoan } from "@/lib/loan-edit";
-import { formatPeso, parseAmount, roundCents } from "@/lib/money";
+import { formatPeso, parseAmount, parseExactAmount, roundCents } from "@/lib/money";
 
 /**
  * Edits a saved loan: its name, terms, next due date and wallet. Payments
@@ -45,7 +45,7 @@ export function LoanEditForm({
 
   const terms = {
     received: parseAmount(received),
-    monthly: parseAmount(monthly),
+    monthly: parseExactAmount(monthly),
     months: Number(months),
     nextDue,
     ...(running ? { paidBefore } : {}),
@@ -74,7 +74,7 @@ export function LoanEditForm({
         !(terms.received > 0)
           ? "Check the loan amount: a number with up to 2 decimals."
           : !(terms.monthly > 0)
-            ? "Check the monthly payment: a number with up to 2 decimals."
+            ? "Check the monthly payment: a number with up to 4 decimals."
             : !(Number.isInteger(terms.months) && terms.months >= 1 && terms.months <= 60)
               ? "Months should be a whole number from 1 to 60."
               : "Pick when the next payment is due.",

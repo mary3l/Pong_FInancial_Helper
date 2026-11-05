@@ -63,6 +63,20 @@ describe("loans", () => {
     expect(sum(rows.map((r) => r.principalPart))).toBe(5000);
   });
 
+  it("rounds a monthly payment quoted past centavos, the last one taking the rest", () => {
+    // SLoan: ₱2,500 over 3 months at ₱944.585.
+    const rows = loanSchedule({ received: 2500, monthly: 944.585, months: 3 }, "2026-11-22");
+    expect(rows.map((r) => r.amount)).toEqual([944.59, 944.59, 944.58]);
+    expect(sum(rows.map((r) => r.amount))).toBe(2833.76);
+    expect(sum(rows.map((r) => r.principalPart))).toBe(2500);
+    expect(loanSummary({ received: 2500, monthly: 944.585, months: 3 })).toMatchObject({ total: 2833.76, interest: 333.76 });
+
+    // ₱15,000 at ₱3,100.7216 for 6: five of ₱3,100.72 and a last of ₱3,100.73, as SLoan bills it.
+    const sloan = loanSchedule({ received: 15000, monthly: 3100.7216, months: 6 }, "2026-08-02");
+    expect(sloan.map((r) => r.amount)).toEqual([3100.72, 3100.72, 3100.72, 3100.72, 3100.72, 3100.73]);
+    expect(loanSchedule({ received: 15000, monthly: 3100.7216, months: 6 }, "2026-12-02", 4).map((r) => r.amount)).toEqual([3100.72, 3100.73]);
+  });
+
   it("describes when a payment is due", () => {
     expect(dueText("2026-11-02", "2026-11-02")).toBe("Due today");
     expect(dueText("2026-11-05", "2026-11-02")).toBe("Due in 3 days");

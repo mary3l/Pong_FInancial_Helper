@@ -11,6 +11,8 @@ import {
   isDebt,
   isSpendable,
   parseAmount,
+  parseExactAmount,
+  roundHalfUp,
   suggestedPayout,
 } from "@/lib/money";
 
@@ -101,6 +103,15 @@ describe("parsing and formatting", () => {
     expect(parseAmount("₱ 300")).toBe(300);
     expect(parseAmount("abc")).toBeNaN();
     expect(parseAmount("1.234")).toBeNaN();
+  });
+
+  it("reads a monthly payment quoted past centavos, and rounds it half up", () => {
+    expect(parseExactAmount("944.585")).toBe(944.585);
+    expect(parseExactAmount("₱3,100.7216")).toBe(3100.7216);
+    expect(parseExactAmount("1.23456")).toBeNaN();
+    expect(roundHalfUp(944.585)).toBe(944.59);
+    expect(roundHalfUp(2833.755)).toBe(2833.76);
+    expect(roundHalfUp(944.584)).toBe(944.58);
   });
 
   it("formats pesos with centavos only when there are some", () => {
