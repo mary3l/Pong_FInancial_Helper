@@ -3,10 +3,10 @@
 import { refresh } from "next/cache";
 import { SIGNED_OUT_ERROR, signedInClient } from "@/lib/auth";
 import { isCategoryFor } from "@/lib/categories";
-import { isValidDate } from "@/lib/dates";
+import { isValidClock, isValidDate } from "@/lib/dates";
 import { bnplFee, buildSchedule } from "@/lib/installments";
 import { MAX_AMOUNT, isSpendable, roundCents, type AccountType, type TransactionType } from "@/lib/money";
-import { savePlan } from "@/lib/server-writes";
+import { savePlan, type Client } from "@/lib/server-writes";
 
 export type TransactionInput = {
   type: TransactionType;
@@ -16,6 +16,8 @@ export type TransactionInput = {
   category: string | null;
   note: string;
   occurredOn: string;
+  /** "15:42", or empty to leave it out (the row then shows when it was logged). */
+  occurredTime?: string | null;
 };
 
 export type ActionResult = { error?: string };
@@ -40,6 +42,8 @@ function validate(input: TransactionInput) {
   if (category !== null && !isCategoryFor(type, category)) return { error: "Pick a category." };
   if (type === "expense" && !category) return { error: "Pick a category." };
   if (!isValidDate(occurredOn)) return { error: "Pick a date." };
+  const occurredTime = input.occurredTime || null;
+  if (occurredTime !== null && !isValidClock(occurredTime)) return { error: "Check the time." };
   const note = String(input.note ?? "").replace(/\s+/g, " ").trim();
   if (note.length > NOTE_MAX) return { error: `Keep the note to ${NOTE_MAX} characters.` };
 
@@ -52,8 +56,35 @@ function validate(input: TransactionInput) {
       category,
       note: note || null,
       occurred_on: occurredOn,
+      occurred_time: occurredTime,
     },
   };
+}
+
+type TxnRowInput = NonNullable<ReturnType<typeof validate>["row"]>;
+
+/** Until migration 0014 there's no occurred_time column: PostgREST says PGRST204 (or 42703). */
+function missingTimeColumn(error: { code?: string; message?: string } | null) {
+  return Boolean(error && (error.code === "PGRST204" || error.code === "42703") && error.message?.includes("occurred_time"));
+}
+
+function withoutTime(row: TxnRowInput): Partial<TxnRowInput> {
+  const copy: Partial<TxnRowInput> = { ...row };
+  delete copy.occurred_time;
+  return copy;
+}
+
+/**
+ * Inserts a transaction, or updates `id`, and returns the new row's id.
+ * Before migration 0014 it saves again without the time.
+ */
+async function writeTxn(supabase: Client, row: TxnRowInput, id?: string) {
+  const run = (values: Partial<TxnRowInput>) =>
+    id
+      ? supabase.from("transactions").update(values).eq("id", id).select("id")
+      : supabase.from("transactions").insert(values).select("id");
+  const first = await run(row);
+  return missingTimeColumn(first.error) ? run(withoutTime(row)) : first;
 }
 
 /**
@@ -73,9 +104,7 @@ export async function saveTransaction(
   if (!supabase) return { error: SIGNED_OUT_ERROR };
 
   // RLS and the (account, owner) foreign keys reject other people's rows.
-  const { data, error } = id
-    ? await supabase.from("transactions").update(checked.row).eq("id", id).select("id")
-    : await supabase.from("transactions").insert(checked.row).select("id");
+  const { data, error } = await writeTxn(supabase, checked.row, id);
   if (error || !data?.length) {
     return { error: "Couldn't save that. Please try again." };
   }
@@ -133,8 +162,9 @@ export async function saveBnplPurchase(input: TransactionInput, plan: BnplPlanIn
   if (typeOf(checked.row.account_id) !== "credit_line") return { error: "Pick a BNPL credit line to pay with." };
   const payFrom = plan.payFromAccountId && isSpendable(typeOf(plan.payFromAccountId)!) ? plan.payFromAccountId : null;
 
-  const { data, error } = await supabase.from("transactions").insert(checked.row).select("id").single();
-  if (error) return { error: "Couldn't save that. Please try again." };
+  const { data: rows, error } = await writeTxn(supabase, checked.row);
+  const data = rows?.[0];
+  if (error || !data) return { error: "Couldn't save that. Please try again." };
 
   const amount = checked.row.amount;
   const saved = await savePlan(supabase, {

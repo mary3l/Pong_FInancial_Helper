@@ -55,6 +55,8 @@ export type Transaction = {
   occurredOn: string;
   /** When it was logged (an ISO timestamp); shown as the time of day. */
   createdAt: string | null;
+  /** "15:42", the time of day it happened, when picked in Add / Edit (migration 0014). */
+  occurredTime: string | null;
   /** The same on every record of one split bill (migration 0012). */
   splitId: string | null;
 };
@@ -126,7 +128,7 @@ export type ScheduledPayment = {
 };
 
 /** A recent expense, income or transfer to repeat with one tap in Add. */
-export type Template = Omit<Transaction, "id" | "occurredOn" | "createdAt" | "splitId">;
+export type Template = Omit<Transaction, "id" | "occurredOn" | "createdAt" | "occurredTime" | "splitId">;
 
 /**
  * Supabase errors are plain objects; wrap them so error pages and logs show
@@ -641,6 +643,7 @@ export async function getScheduled(today: string) {
 
 const TXN_BASE = "id, type, amount, account_id, to_account_id, category, note, occurred_on, created_at";
 const TXN_COLUMNS = `${TXN_BASE}, split_id`;
+const TXN_WITH_TIME = `${TXN_COLUMNS}, occurred_time`;
 
 type TxnRow = {
   id: string;
@@ -653,6 +656,8 @@ type TxnRow = {
   occurred_on: string;
   created_at?: string | null;
   split_id?: string | null;
+  /** "15:42:00" (migration 0014). */
+  occurred_time?: string | null;
 };
 
 function toTransaction(r: TxnRow): Transaction {
@@ -666,6 +671,7 @@ function toTransaction(r: TxnRow): Transaction {
     note: r.note,
     occurredOn: r.occurred_on,
     createdAt: r.created_at ?? null,
+    occurredTime: r.occurred_time ? r.occurred_time.slice(0, 5) : null,
     splitId: r.split_id ?? null,
   };
 }
@@ -673,12 +679,18 @@ function toTransaction(r: TxnRow): Transaction {
 type Read<T> = PromiseLike<{ data: T; error: { code?: string; message: string } | null }>;
 
 /**
- * Reads transactions with split_id, or without it while migration 0012
- * hasn't been run (42703). Splits then show record by record.
+ * Reads transactions with occurred_time and split_id, dropping each while
+ * its migration (0014, 0012) hasn't been run (42703). Without the time,
+ * rows show when they were logged; without split_id, splits show record by
+ * record.
  */
 async function readTxns<T>(run: (columns: string) => Read<T>) {
-  const first = await run(TXN_COLUMNS);
-  return first.error?.code === "42703" ? run(TXN_BASE) : first;
+  let result = await run(TXN_WITH_TIME);
+  for (const columns of [TXN_COLUMNS, TXN_BASE]) {
+    if (result.error?.code !== "42703") break;
+    result = await run(columns);
+  }
+  return result;
 }
 
 /** Newest first. `from` and `to` are inclusive dates; `accountId` limits it to one account. */

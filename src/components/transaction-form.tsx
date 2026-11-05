@@ -25,7 +25,7 @@ import {
 } from "@/lib/calculator";
 import { categoriesFor, categoryInfo } from "@/lib/categories";
 import type { Account, Template, Transaction } from "@/lib/data";
-import { formatRelativeDay, formatShortDay, isValidDate } from "@/lib/dates";
+import { clockOf, formatRelativeDay, formatShortDay, isValidDate } from "@/lib/dates";
 import { bnplFee, bnplFirstDue, buildSchedule } from "@/lib/installments";
 import { balanceEffect, formatPeso, isSpendable, parseAmount, roundCents, type TransactionType } from "@/lib/money";
 import { equalShares } from "@/lib/people";
@@ -122,6 +122,10 @@ export function TransactionForm({
     transaction?.toAccountId ?? accounts.find((a) => a.id !== defaultFrom)?.id ?? "",
   );
   const [date, setDate] = useState(transaction?.occurredOn ?? today);
+  // New: now. Editing: the time picked, else when it was logged. Empty = no time.
+  const [time, setTime] = useState(() =>
+    transaction ? (transaction.occurredTime ?? (transaction.createdAt ? clockOf(transaction.createdAt) : "")) : clockOf(),
+  );
   const [note, setNote] = useState(transaction?.note ?? prefill?.note ?? "");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -255,7 +259,16 @@ export function TransactionForm({
       return;
     }
     startTransition(async () => {
-      const input = { type, amount, accountId, toAccountId: type === "transfer" ? toAccountId : null, category, note, occurredOn: date };
+      const input = {
+        type,
+        amount,
+        accountId,
+        toAccountId: type === "transfer" ? toAccountId : null,
+        category,
+        note,
+        occurredOn: date,
+        occurredTime: time || null,
+      };
       if (withPlan) {
         const result = await saveBnplPurchase(
           { ...input, note: note.trim() || categoryInfo("expense", category).label },
@@ -733,8 +746,8 @@ export function TransactionForm({
           </div>
         )}
 
-        <div className="order-8 grid grid-cols-[minmax(0,10rem)_minmax(0,1fr)] gap-2.5 lg:order-none lg:grid-cols-2">
-          <div className="flex flex-col gap-1">
+        <div className="order-8 grid grid-cols-2 gap-2.5 lg:order-none lg:grid-cols-[minmax(0,1fr)_minmax(0,8.5rem)_minmax(0,1.3fr)]">
+          <div className={`flex flex-col gap-1 ${splitting ? "col-span-2" : ""}`}>
             <label htmlFor="txn-date" className="text-[13px] font-extrabold">Date</label>
             <input
               id="txn-date"
@@ -745,7 +758,22 @@ export function TransactionForm({
               className="h-11 min-w-0 rounded-[14px] bg-card px-3 text-[15px] outline-none focus:ring-2 focus:ring-sea"
             />
           </div>
-          <div className="flex flex-col gap-1">
+          {/* A split saves several records through its own flow, which keeps just the date. */}
+          {!splitting && (
+            <div className="flex flex-col gap-1">
+              <label htmlFor="txn-time" className="text-[13px] font-extrabold">Time</label>
+              <input
+                id="txn-time"
+                type="time"
+                value={time}
+                onChange={(e) => setTime(e.target.value)}
+                // Now on the server and in the browser can be a minute apart.
+                suppressHydrationWarning
+                className="h-11 min-w-0 rounded-[14px] bg-card px-3 text-[15px] outline-none focus:ring-2 focus:ring-sea"
+              />
+            </div>
+          )}
+          <div className="col-span-2 flex flex-col gap-1 lg:col-span-1">
             <label htmlFor="txn-note" className="text-[13px] font-extrabold">Note</label>
             <input
               id="txn-note"

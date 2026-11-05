@@ -320,6 +320,28 @@ where table_schema = 'public' and table_name in ('payroll_settings', 'payroll_da
 
 Expect `3`.
 
+## Step 14 · Time on transactions
+
+File: `migrations/0014_transaction_time.sql`
+
+Lets Add and Edit save the **time** something happened, next to its date, and
+Activity shows it ("Nov 5, 3:42 PM").
+
+- `transactions.occurred_time`: the time you picked, in Philippine time. Empty for
+  older records; those show the time they were logged.
+
+Until you run this, the app still works: it saves without the time you picked and
+shows when each record was logged.
+
+**Check**
+
+```sql
+select count(*) from information_schema.columns
+where table_name = 'transactions' and column_name = 'occurred_time';
+```
+
+Expect `1`.
+
 ---
 
 ## All done?

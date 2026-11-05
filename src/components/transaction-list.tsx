@@ -2,7 +2,7 @@ import Link from "next/link";
 import { PathIcon } from "@/components/icons";
 import { categoryInfo } from "@/lib/categories";
 import type { Account, Transaction } from "@/lib/data";
-import { formatRelativeDay, formatTime } from "@/lib/dates";
+import { formatRelativeDay, formatShortDay, transactionTime } from "@/lib/dates";
 import { formatPeso } from "@/lib/money";
 import { groupSplits, type ListItem, type SplitBill } from "@/lib/splits";
 
@@ -57,9 +57,16 @@ export function TransactionList({
   );
 }
 
-/** "3:42 PM", or "Yesterday 3:42 PM" when the row shows its own day. */
-function when(date: string, createdAt: string | null, today: string | null): string {
-  return [today ? formatRelativeDay(date, today) : "", formatTime(createdAt)].filter(Boolean).join(" ");
+/**
+ * "Nov 5, 3:42 PM" under a day heading; "Yesterday, 3:42 PM" in short lists
+ * with no headings (`today` set). Just the day if there's no time.
+ */
+function when(
+  item: { occurredOn: string; occurredTime: string | null; createdAt: string | null },
+  today: string | null,
+): string {
+  const day = today ? formatRelativeDay(item.occurredOn, today) : formatShortDay(item.occurredOn);
+  return [day, transactionTime(item)].filter(Boolean).join(", ");
 }
 
 function itemKey(item: ListItem) {
@@ -83,7 +90,7 @@ function SplitRow({
     names.get(split.accountId) ?? "Removed wallet",
     `split with ${people}`,
   ];
-  detail.unshift(when(split.occurredOn, split.createdAt, today));
+  detail.unshift(when(split, today));
 
   return (
     <Link
@@ -127,7 +134,7 @@ function TransactionRow({
     txn.type === "transfer"
       ? [txn.note || "Transfer", "not spending"]
       : [txn.note ? info.label : null, from];
-  detail.unshift(when(txn.occurredOn, txn.createdAt, today));
+  detail.unshift(when(txn, today));
 
   const amount =
     txn.type === "expense"

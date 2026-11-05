@@ -96,6 +96,34 @@ export function formatTime(timestamp: string | null | undefined): string {
   }).format(ms);
 }
 
+/** "15:42" in Philippine time, from a Date or an ISO timestamp. */
+export function clockOf(when: Date | string = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: APP_TIME_ZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(typeof when === "string" ? new Date(when) : when);
+  const part = (type: string) => parts.find((p) => p.type === type)?.value ?? "00";
+  return `${part("hour")}:${part("minute")}`;
+}
+
+/** "15:42" (24-hour, as a time input gives it). */
+export function isValidClock(value: unknown): value is string {
+  return typeof value === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+}
+
+/** "15:42" → "3:42 PM". */
+export function formatClock(clock: string): string {
+  const [h, m] = clock.split(":").map(Number);
+  return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
+}
+
+/** The time a transaction shows: the one picked in Add / Edit, else when it was logged. */
+export function transactionTime(txn: { occurredTime?: string | null; createdAt: string | null }): string {
+  return txn.occurredTime ? formatClock(txn.occurredTime) : formatTime(txn.createdAt);
+}
+
 // Activity is shown per kinsenas: the 1st–15th and the 16th–end of month.
 export type Period = { start: string; end: string };
 

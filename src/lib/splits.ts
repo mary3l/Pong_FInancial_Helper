@@ -20,6 +20,8 @@ export type SplitBill = {
   occurredOn: string;
   /** When it was logged. */
   createdAt: string | null;
+  /** The time picked for it, if any. */
+  occurredTime: string | null;
 };
 
 export type ListItem = { kind: "one"; txn: Transaction } | { kind: "split"; split: SplitBill };
@@ -52,6 +54,7 @@ export function toSplitBill(splitId: string, records: Transaction[]): SplitBill 
     accountId: (mine ?? records[0]).accountId,
     occurredOn: records[0].occurredOn,
     createdAt: records[0].createdAt,
+    occurredTime: records[0].occurredTime,
   };
 }
 

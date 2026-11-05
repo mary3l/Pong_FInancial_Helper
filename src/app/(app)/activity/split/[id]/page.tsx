@@ -5,7 +5,7 @@ import { ChevronIcon, PathIcon } from "@/components/icons";
 import { Pong } from "@/components/pong";
 import { categoryInfo } from "@/lib/categories";
 import { getAccounts, getInstallmentPlans, getPeople, getSplit, getTransactions } from "@/lib/data";
-import { formatRelativeDay, formatShortDay, formatTime, today as getToday } from "@/lib/dates";
+import { formatRelativeDay, formatShortDay, today as getToday, transactionTime } from "@/lib/dates";
 import { dueText } from "@/lib/installments";
 import { formatPeso, roundCents } from "@/lib/money";
 import { toSplitBill, typedNote, unpaidByRecord } from "@/lib/splits";
@@ -82,7 +82,7 @@ async function SplitDetail({ params, searchParams }: PageProps<"/activity/split/
         <span className="font-display text-[44px] leading-[1.1] font-semibold">{formatPeso(split.total)}</span>
         <span className="text-sm font-bold text-muted">
           {info.label} · {wallet} · {formatRelativeDay(split.occurredOn, today)}
-          {split.createdAt && ` ${formatTime(split.createdAt)}`}
+          {transactionTime(split) && `, ${transactionTime(split)}`}
         </span>
       </section>
 
