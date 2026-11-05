@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bnplFee, bnplFirstDue, buildSchedule, catchUpDue, dueText, loanSchedule, loanSummary, upcomingSchedule } from "@/lib/installments";
+import { bnplFee, bnplFirstDue, buildSchedule, catchUpDue, dueText, loanSchedule, loanSummary, runningLoan, upcomingSchedule } from "@/lib/installments";
 import { roundCents } from "@/lib/money";
 
 const sum = (values: number[]) => roundCents(values.reduce((a, b) => a + b, 0));
@@ -46,6 +46,21 @@ describe("loans", () => {
     const rows = loanSchedule(terms, "2027-01-25", 2);
     expect(rows).toHaveLength(10);
     expect(rows[0]).toMatchObject({ seq: 3, dueOn: "2027-01-25" });
+  });
+
+  it("a loan already running counts the due dates before today as paid", () => {
+    // SLoan: ₱15,000 over 6 months from Jul 2, first due Aug 2; today is Nov 5.
+    expect(runningLoan("2026-08-02", 6, "2026-11-05")).toEqual({ paid: 4, nextDue: "2026-12-02" });
+    // Due today isn't counted yet.
+    expect(runningLoan("2026-08-05", 6, "2026-11-05")).toEqual({ paid: 3, nextDue: "2026-11-05" });
+    expect(runningLoan("2026-12-02", 6, "2026-11-05")).toEqual({ paid: 0, nextDue: "2026-12-02" });
+    // Month-end due dates stay on the 31st where they can.
+    expect(runningLoan("2026-08-31", 6, "2026-11-05").nextDue).toBe("2026-11-30");
+    expect(runningLoan("2026-08-31", 6, "2026-12-05").nextDue).toBe("2026-12-31");
+
+    const rows = loanSchedule({ received: 15000, monthly: 3100.72, months: 6 }, "2026-12-02", 4);
+    expect(rows.map((r) => [r.seq, r.dueOn])).toEqual([[5, "2026-12-02"], [6, "2027-01-02"]]);
+    expect(sum(rows.map((r) => r.principalPart))).toBe(5000);
   });
 
   it("describes when a payment is due", () => {

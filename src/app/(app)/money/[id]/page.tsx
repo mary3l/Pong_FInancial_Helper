@@ -7,7 +7,7 @@ import { getAccounts, getInstallmentPlans, getSplitsPaidWith, installmentInputs 
 import { addDays, formatShortDay, today as getToday } from "@/lib/dates";
 import { scheduledItems } from "@/lib/forecast";
 import { catchUpDue, dueText } from "@/lib/installments";
-import { formatPeso, isDebt, roundCents } from "@/lib/money";
+import { formatPeso, isDebt, isSpendable, roundCents } from "@/lib/money";
 import { nextOccurrence } from "@/lib/schedule";
 import { toSplitBill, type SplitBill } from "@/lib/splits";
 import { AccountActions, PayBillButton, RemovePlanButton, UpcomingPayments } from "./account-actions";
@@ -76,6 +76,10 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
     0,
     roundCents(owed - plans.flatMap((p) => p.payments).filter((p) => !p.transactionId).reduce((sum, p) => sum + p.principalPart, 0)),
   );
+  // A loan's interest isn't in its balance until you pay it, so the card adds what's ahead to show the whole amount.
+  const unpaidPayments = plans.flatMap((p) => p.payments).filter((p) => !p.transactionId);
+  const interestLeft = roundCents(unpaidPayments.reduce((sum, p) => sum + p.feePart, 0));
+  const leftToPay = roundCents(owed + interestLeft);
   const defaultDue = account.dueDay
     ? nextOccurrence({ frequency: "monthly", day1: account.dueDay, day2: null }, today)
     : addDays(today, 30);
@@ -112,6 +116,15 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
             </div>
             <span className="text-[15px] text-sea-text">
               Available: {formatPeso(Math.max(0, account.creditLimit - owed))}
+            </span>
+          </>
+        ) : !credit && interestLeft > 0 ? (
+          <>
+            <h2 className="text-sm font-bold text-sea-text">LEFT TO PAY</h2>
+            <span className="font-display text-4xl font-semibold">{formatPeso(leftToPay)}</span>
+            <span className="text-[15px] text-sea-text">
+              {formatPeso(owed)} loan + {formatPeso(interestLeft)} interest · {unpaidPayments.length} payment
+              {unpaidPayments.length === 1 ? "" : "s"} left
             </span>
           </>
         ) : (
@@ -269,7 +282,19 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
         </section>
       )}
 
-      <AccountActions account={account} />
+      <AccountActions
+        account={account}
+        loan={
+          credit
+            ? undefined
+            : {
+                plan: plans.find((p) => p.kind === "loan") ?? null,
+                wallets: accounts.filter((a) => isSpendable(a.type) && !a.archived),
+                today,
+              }
+        }
+        startEditing={query.edit === "1"}
+      />
     </>
   );
 }

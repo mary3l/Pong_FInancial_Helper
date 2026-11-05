@@ -6,11 +6,12 @@ import { addUpcomingPayments, payInstallments, removePlan } from "@/app/credit-a
 import { removeWallet, restoreWallet } from "@/app/wallet-actions";
 import { AmountInput } from "@/components/amount-input";
 import { ChoiceChip, FIELD_CLASS } from "@/components/choice-chip";
-import type { Account } from "@/lib/data";
+import type { Account, InstallmentPlan } from "@/lib/data";
 import { formatShortDay, isValidDate } from "@/lib/dates";
 import { monthlyDates } from "@/lib/forecast";
 import { formatPeso, parseAmount, roundCents } from "@/lib/money";
 import { CreditLineForm } from "../credit-line-form";
+import { LoanEditForm } from "./loan-edit-form";
 
 /** Pays every installment due on the next bill date. */
 export function PayBillButton({ ids, total }: { ids: string[]; total: number }) {
@@ -69,18 +70,32 @@ export function RemovePlanButton({ id, name }: { id: string; name: string }) {
   );
 }
 
-/** Edit a credit line, or archive / restore the account. */
-export function AccountActions({ account }: { account: Account }) {
+/** Edit a credit line or loan, or archive / restore the account. */
+export function AccountActions({
+  account,
+  loan,
+  startEditing = false,
+}: {
+  account: Account;
+  /** Loans: the plan and wallets the edit form needs. */
+  loan?: { plan: InstallmentPlan | null; wallets: Account[]; today: string };
+  startEditing?: boolean;
+}) {
   const router = useRouter();
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(startEditing);
   const [confirm, setConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const editable = account.type === "credit_line" || (account.type === "loan" && loan);
 
-  if (editing) {
+  if (editing && editable) {
     return (
-      <div className="rounded-[20px] bg-card p-4">
-        <CreditLineForm account={account} onDone={() => setEditing(false)} />
+      <div id="edit" className="scroll-mt-4 rounded-[20px] bg-card p-4">
+        {loan ? (
+          <LoanEditForm account={account} {...loan} onDone={() => setEditing(false)} />
+        ) : (
+          <CreditLineForm account={account} onDone={() => setEditing(false)} />
+        )}
       </div>
     );
   }
@@ -88,7 +103,7 @@ export function AccountActions({ account }: { account: Account }) {
   return (
     <div className="flex flex-col gap-2 pt-2">
       <div className="flex flex-wrap gap-2">
-        {account.type === "credit_line" && (
+        {editable && (
           <button type="button" onClick={() => setEditing(true)} className="h-11 rounded-[14px] bg-card px-4 font-extrabold text-ink hover:bg-sea-tint">
             Edit {account.name}
           </button>

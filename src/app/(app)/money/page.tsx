@@ -156,6 +156,15 @@ async function Wallets() {
                         +
                       </Link>
                     )}
+                    {a.type === "loan" && (
+                      <Link
+                        href={`/money/${a.id}?edit=1#edit`}
+                        aria-label={`Edit ${a.name}`}
+                        className="flex h-11 shrink-0 items-center rounded-full px-3 text-sm font-extrabold text-sea-dark hover:bg-mint"
+                      >
+                        Edit
+                      </Link>
+                    )}
                   </li>
                 ))}
               </ul>

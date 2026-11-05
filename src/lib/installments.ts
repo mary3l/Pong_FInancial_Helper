@@ -114,6 +114,16 @@ export function loanSchedule(
   });
 }
 
+/**
+ * A loan you were already paying before adding it here: every due date
+ * before today counts as paid, and the next one is when the rest start.
+ */
+export function runningLoan(firstDue: string, months: number, today: string): { paid: number; nextDue: string } {
+  const dates = monthlyDates(firstDue, months);
+  const paid = dates.filter((d) => d < today).length;
+  return { paid, nextDue: dates[Math.min(paid, months - 1)] };
+}
+
 /** "Due in 3 days", "Due today", "3 days late". */
 export function dueText(dueOn: string, today: string): string {
   const days = daysBetween(today, dueOn);

@@ -8,22 +8,27 @@ import { ChoiceChip, FIELD_CLASS } from "@/components/choice-chip";
 import type { Account } from "@/lib/data";
 import { formatShortDay, isValidDate } from "@/lib/dates";
 import { monthlyDates } from "@/lib/forecast";
-import { loanSchedule, loanSummary } from "@/lib/installments";
-import { formatPeso, parseAmount } from "@/lib/money";
+import { loanSchedule, loanSummary, runningLoan } from "@/lib/installments";
+import { formatPeso, parseAmount, roundCents } from "@/lib/money";
 
 const PROVIDERS = ["SLoan", "MariLoan", "GLoan", "Pag-IBIG", "SSS"];
 
+/** Just got the money, or got it before and already paying monthly. */
+type Mode = "new" | "running";
+
 export function LoanForm({ wallets, today }: { wallets: Account[]; today: string }) {
   const router = useRouter();
+  const [mode, setMode] = useState<Mode>("new");
   const [name, setName] = useState("SLoan");
   const [received, setReceived] = useState("");
   const [into, setInto] = useState(wallets[0]?.id ?? "");
   const [receivedOn, setReceivedOn] = useState(today);
   const [monthly, setMonthly] = useState("");
   const [months, setMonths] = useState("12");
-  const [nextDue, setNextDue] = useState(monthlyDates(today, 2)[1]);
+  const [firstDue, setFirstDue] = useState(monthlyDates(today, 2)[1]);
   const [payFrom, setPayFrom] = useState(wallets[0]?.id ?? "");
-  const [alreadyPaid, setAlreadyPaid] = useState("0");
+  // Counted from the due dates until you change it.
+  const [paidOverride, setPaidOverride] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -32,30 +37,42 @@ export function LoanForm({ wallets, today }: { wallets: Account[]; today: string
     monthly: parseAmount(monthly),
     months: Number(months),
   };
-  const paid = into ? 0 : Math.max(0, Math.floor(Number(alreadyPaid) || 0));
-  const valid =
-    terms.received > 0 &&
-    terms.monthly > 0 &&
-    Number.isInteger(terms.months) &&
-    terms.months >= 1 &&
-    terms.months <= 60 &&
-    paid < terms.months &&
-    isValidDate(nextDue);
+  const running = mode === "running";
+  const monthsOk = Number.isInteger(terms.months) && terms.months >= 1 && terms.months <= 60;
+  const datesOk = monthsOk && isValidDate(firstDue);
+  const autoPaid = running && datesOk ? runningLoan(firstDue, terms.months, today).paid : 0;
+  const paid = running ? (paidOverride ?? autoPaid) : 0;
+  const nextDue = running && datesOk ? monthlyDates(firstDue, paid + 1)[paid] : firstDue;
+  const valid = terms.received > 0 && terms.monthly > 0 && datesOk && paid < terms.months;
   const summary = valid ? loanSummary(terms) : null;
   const schedule = valid ? loanSchedule(terms, nextDue, paid) : [];
+  const owedNow = roundCents(schedule.reduce((sum, r) => sum + r.principalPart, 0));
+  const leftToPay = roundCents(schedule.reduce((sum, r) => sum + r.amount, 0));
+  const fullyPaid = running && datesOk && paid >= terms.months;
+
+  function pickMode(next: Mode) {
+    setMode(next);
+    setPaidOverride(null);
+    setError(null);
+  }
 
   function save(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     if (!valid) {
-      setError("Fill in the amount received, monthly payment and months.");
+      setError(
+        fullyPaid
+          ? "Every payment's due date has passed, so this loan looks paid off. Check the first due date or payments made."
+          : `Fill in the ${running ? "loan amount" : "amount received"}, monthly payment and months.`,
+      );
       return;
     }
     startTransition(async () => {
       const result = await addLoan({
         name,
         ...terms,
-        intoAccountId: into || null,
+        // Got it before using the app: no transfer in, the loan starts at what's still owed.
+        intoAccountId: running ? null : into || null,
         receivedOn,
         nextDue,
         payFromAccountId: payFrom || null,
@@ -76,8 +93,29 @@ export function LoanForm({ wallets, today }: { wallets: Account[]; today: string
     </div>
   );
 
+  const dateField = (id: string, label: string, value: string, set: (v: string) => void) => (
+    <div className="flex flex-col gap-1">
+      <label htmlFor={id} className="text-sm font-bold">{label}</label>
+      <input id={id} type="date" value={value} onChange={(e) => set(e.target.value)} className={FIELD_CLASS} />
+    </div>
+  );
+
   return (
     <form onSubmit={save} className="flex flex-col gap-4">
+      <div role="group" aria-label="New or existing loan" className="grid grid-cols-2 gap-1 rounded-2xl bg-card p-1">
+        {(["new", "running"] as const).map((m) => (
+          <button
+            key={m}
+            type="button"
+            aria-pressed={mode === m}
+            onClick={() => pickMode(m)}
+            className={`h-10 rounded-xl text-sm ${mode === m ? "bg-sea font-extrabold text-white" : "font-bold text-muted hover:text-ink"}`}
+          >
+            {m === "new" ? "Just received" : "Already paying"}
+          </button>
+        ))}
+      </div>
+
       <div role="group" aria-label="Lender" className="flex flex-wrap gap-2">
         {[...PROVIDERS, "Other"].map((p) => {
           const selected = p === "Other" ? !PROVIDERS.includes(name) : name === p;
@@ -95,25 +133,74 @@ export function LoanForm({ wallets, today }: { wallets: Account[]; today: string
           <input id="loan-name" value={name} onChange={(e) => setName(e.target.value)} maxLength={60} required className={FIELD_CLASS} />
         </div>
         <div className="grid grid-cols-2 gap-3">
-          {money("loan-received", "Amount received", received, setReceived)}
-          <div className="flex flex-col gap-1">
-            <label htmlFor="loan-into" className="text-sm font-bold">Received into</label>
-            <select id="loan-into" value={into} onChange={(e) => setInto(e.target.value)} className={FIELD_CLASS}>
-              {wallets.map((w) => (
-                <option key={w.id} value={w.id}>{w.name}</option>
-              ))}
-              <option value="">Received before (already spent)</option>
-            </select>
-          </div>
+          {money("loan-received", running ? "Loan amount" : "Amount received", received, setReceived)}
+          {running ? (
+            <div className="flex flex-col gap-1">
+              <label htmlFor="loan-months" className="text-sm font-bold">Months</label>
+              <input
+                id="loan-months"
+                value={months}
+                onChange={(e) => {
+                  setMonths(e.target.value);
+                  setPaidOverride(null);
+                }}
+                inputMode="numeric"
+                className={FIELD_CLASS}
+              />
+            </div>
+          ) : (
+            <div className="flex flex-col gap-1">
+              <label htmlFor="loan-into" className="text-sm font-bold">Received into</label>
+              <select id="loan-into" value={into} onChange={(e) => setInto(e.target.value)} className={FIELD_CLASS}>
+                {wallets.map((w) => (
+                  <option key={w.id} value={w.id}>{w.name}</option>
+                ))}
+                {!wallets.length && <option value="">No wallet yet</option>}
+              </select>
+            </div>
+          )}
           {money("loan-monthly", "Monthly payment", monthly, setMonthly)}
-          <div className="flex flex-col gap-1">
-            <label htmlFor="loan-months" className="text-sm font-bold">Months</label>
-            <input id="loan-months" value={months} onChange={(e) => setMonths(e.target.value)} inputMode="numeric" className={FIELD_CLASS} />
-          </div>
-          <div className="flex flex-col gap-1">
-            <label htmlFor="loan-next" className="text-sm font-bold">{paid ? "Next payment due" : "First due"}</label>
-            <input id="loan-next" type="date" value={nextDue} onChange={(e) => setNextDue(e.target.value)} className={FIELD_CLASS} />
-          </div>
+          {running ? (
+            dateField("loan-first", "1st payment was due", firstDue, (v) => {
+              setFirstDue(v);
+              setPaidOverride(null);
+            })
+          ) : (
+            <div className="flex flex-col gap-1">
+              <label htmlFor="loan-months" className="text-sm font-bold">Months</label>
+              <input id="loan-months" value={months} onChange={(e) => setMonths(e.target.value)} inputMode="numeric" className={FIELD_CLASS} />
+            </div>
+          )}
+          {running ? (
+            <div className="flex flex-col gap-1">
+              <span id="loan-paid-label" className="text-sm font-bold">Payments made</span>
+              <div role="group" aria-labelledby="loan-paid-label" className="flex h-12 items-center justify-between rounded-[14px] border-2 border-line px-1">
+                <button
+                  type="button"
+                  aria-label="One fewer payment made"
+                  disabled={paid <= 0}
+                  onClick={() => setPaidOverride(Math.max(0, paid - 1))}
+                  className="h-9 w-9 rounded-[10px] text-xl font-extrabold text-sea-dark hover:bg-sea-tint disabled:opacity-30"
+                >
+                  &minus;
+                </button>
+                <span aria-live="polite" className="font-extrabold">
+                  {paid}{monthsOk && <span className="font-bold text-muted"> of {terms.months}</span>}
+                </span>
+                <button
+                  type="button"
+                  aria-label="One more payment made"
+                  disabled={!monthsOk || paid >= terms.months - 1}
+                  onClick={() => setPaidOverride(paid + 1)}
+                  className="h-9 w-9 rounded-[10px] text-xl font-extrabold text-sea-dark hover:bg-sea-tint disabled:opacity-30"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+          ) : (
+            dateField("loan-next", "First due", firstDue, setFirstDue)
+          )}
           <div className="flex flex-col gap-1">
             <label htmlFor="loan-from" className="text-sm font-bold">Pay from</label>
             <select id="loan-from" value={payFrom} onChange={(e) => setPayFrom(e.target.value)} className={FIELD_CLASS}>
@@ -123,22 +210,26 @@ export function LoanForm({ wallets, today }: { wallets: Account[]; today: string
               {!wallets.length && <option value="">Any wallet</option>}
             </select>
           </div>
-          {into ? (
-            <div className="flex flex-col gap-1">
-              <label htmlFor="loan-date" className="text-sm font-bold">Received on</label>
-              <input id="loan-date" type="date" value={receivedOn} onChange={(e) => setReceivedOn(e.target.value)} className={FIELD_CLASS} />
-            </div>
-          ) : (
-            <div className="flex flex-col gap-1">
-              <label htmlFor="loan-paid" className="text-sm font-bold">Payments made</label>
-              <input id="loan-paid" value={alreadyPaid} onChange={(e) => setAlreadyPaid(e.target.value)} inputMode="numeric" className={FIELD_CLASS} />
-            </div>
-          )}
+          {!running && into && dateField("loan-date", "Received on", receivedOn, setReceivedOn)}
         </div>
+        {running && datesOk && (
+          <p className="text-[13px] leading-snug text-muted">
+            {fullyPaid
+              ? `All ${terms.months} due dates have passed. Paid off already? Then there's nothing to add.`
+              : `${paidOverride === null ? "Counted from the due dates before today. " : ""}Next payment: ${paid + 1} of ${terms.months}, ${formatShortDay(nextDue, today)}.`}
+          </p>
+        )}
       </div>
 
       {summary && (
         <dl className="flex flex-col gap-1.5 rounded-[20px] bg-card px-4 py-3.5 text-[15px]">
+          {running && (
+            <>
+              <div className="flex justify-between gap-3"><dt>Still to pay ({schedule.length} left)</dt><dd className="font-extrabold">{formatPeso(leftToPay)}</dd></div>
+              <div className="flex justify-between gap-3"><dt>You owe {name || "the loan"} now</dt><dd className="font-extrabold">{formatPeso(owedNow)}</dd></div>
+              <div className="mb-1 flex justify-between gap-3 border-b border-line-soft pb-2"><dt>Interest still ahead</dt><dd className="font-extrabold">{formatPeso(roundCents(leftToPay - owedNow))}</dd></div>
+            </>
+          )}
           <div className="flex justify-between gap-3"><dt>Total you&apos;ll pay</dt><dd className="font-extrabold">{formatPeso(summary.total)}</dd></div>
           <div className="flex justify-between gap-3"><dt>Interest &amp; fees</dt><dd className="font-extrabold">{formatPeso(summary.interest)}</dd></div>
           <div className="flex justify-between gap-3"><dt>Effective rate</dt><dd className="font-extrabold">{summary.ratePerMonth}% / month</dd></div>
@@ -146,14 +237,25 @@ export function LoanForm({ wallets, today }: { wallets: Account[]; today: string
       )}
 
       <p className="rounded-2xl bg-sun-tint px-4 py-3 text-sm leading-relaxed">
-        The money you receive is <strong>not income</strong>. It&apos;s a transfer from {name || "the loan"}
-        {into ? ` into ${wallets.find((w) => w.id === into)?.name}` : ""}, so your budget and savings stay
-        honest. Each payment: the principal part is a transfer, only the interest is an expense.
+        {running ? (
+          <>
+            You got this money before, so it&apos;s <strong>not added to any wallet</strong> and the {paid} payment
+            {paid === 1 ? "" : "s"} you already made {paid === 1 ? "isn't" : "aren't"} logged again. {name || "The loan"}{" "}
+            starts at what you still owe{valid ? ` (${formatPeso(owedNow)})` : ""}. Each payment from here: the
+            principal part is a transfer, only the interest is an expense.
+          </>
+        ) : (
+          <>
+            The money you receive is <strong>not income</strong>. It&apos;s a transfer from {name || "the loan"}
+            {into ? ` into ${wallets.find((w) => w.id === into)?.name}` : ""}, so your budget and savings stay
+            honest. Each payment: the principal part is a transfer, only the interest is an expense.
+          </>
+        )}
       </p>
 
       {schedule.length > 0 && (
         <section aria-labelledby="loan-schedule" className="flex flex-col gap-1">
-          <h2 id="loan-schedule" className="text-sm font-extrabold">Schedule preview</h2>
+          <h2 id="loan-schedule" className="text-sm font-extrabold">{running ? "Payments left" : "Schedule preview"}</h2>
           <ul className="flex flex-col rounded-[20px] bg-card px-4 py-1">
             {schedule.slice(0, 3).map((r) => (
               <li key={r.seq} className="flex justify-between border-b border-line-soft py-2 text-[15px] last:border-0">

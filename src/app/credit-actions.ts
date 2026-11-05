@@ -4,6 +4,7 @@ import { refresh } from "next/cache";
 import { SIGNED_OUT_ERROR, signedInClient } from "@/lib/auth";
 import { isValidDate, today } from "@/lib/dates";
 import { loanSchedule, upcomingSchedule } from "@/lib/installments";
+import { editLoan } from "@/lib/loan-edit";
 import { MAX_AMOUNT, isSpendable, roundCents, type AccountType } from "@/lib/money";
 import { pickWallet, savePlan } from "@/lib/server-writes";
 
@@ -277,6 +278,150 @@ export async function addLoan(input: LoanInput): Promise<CreditResult> {
 
   refresh();
   return { id: loanId };
+}
+
+export type LoanUpdate = {
+  name: string;
+  received: number;
+  monthly: number;
+  months: number;
+  /** When the first unpaid payment is due. */
+  nextDue: string;
+  payFromAccountId: string | null;
+  /** Payments made before adding it here. Only for a loan you were already paying. */
+  paidBefore?: number;
+};
+
+/**
+ * Edits a saved loan. Payments already made stay; the unpaid ones are
+ * worked out again (see lib/loan-edit). A new amount received changes the
+ * transfer that brought it in, or for a loan you were already paying, what
+ * it started at.
+ */
+export async function updateLoan(accountId: string, input: LoanUpdate): Promise<CreditResult> {
+  const name = cleanName(input.name);
+  if (!name) return { error: "Give the loan a name, like SLoan." };
+  if (name.length > 60) return { error: "Keep the name to 60 characters." };
+  if (!validAmount(input.received)) return { error: "Enter the loan amount." };
+  if (!validAmount(input.monthly)) return { error: "Enter the monthly payment." };
+  if (!Number.isInteger(input.months) || input.months < 1 || input.months > 60) return { error: "Pick how many months." };
+  if (!isValidDate(input.nextDue)) return { error: "Pick when the next payment is due." };
+
+  const supabase = await signedInClient();
+  if (!supabase) return { error: SIGNED_OUT_ERROR };
+
+  const { data: account } = await supabase.from("accounts").select("id, type").eq("id", accountId).maybeSingle();
+  if (!account || account.type !== "loan") return { error: "Couldn't find that loan." };
+  if (input.payFromAccountId) {
+    const { data: from } = await supabase.from("accounts").select("type").eq("id", input.payFromAccountId).maybeSingle();
+    if (!from || !isSpendable(from.type as AccountType)) return { error: "Pay from cash, a bank or an e-wallet." };
+  }
+
+  const { data: plan } = await supabase
+    .from("installment_plans")
+    .select("id, source_txn_id")
+    .eq("account_id", accountId)
+    .eq("kind", "loan")
+    .order("created_at")
+    .limit(1)
+    .maybeSingle();
+  if (!plan) {
+    // Its plan was removed: only the name is left to change.
+    const { error } = await supabase.from("accounts").update({ name }).eq("id", accountId);
+    if (error) return FAILED;
+    refresh();
+    return {};
+  }
+
+  const { data: payments, error: readError } = await supabase
+    .from("scheduled_payments")
+    .select("id, seq, due_on, amount, principal_part, fee_part, transfer_txn_id, fee_txn_id")
+    .eq("plan_id", plan.id);
+  if (readError) return FAILED;
+  if (plan.source_txn_id && input.paidBefore) {
+    return { error: "This loan's money came in here, so there are no payments from before." };
+  }
+  const isPaid =(p: (typeof payments)[number]) => Boolean(p.transfer_txn_id || p.fee_txn_id);
+  const edited = editLoan(
+    payments.map((p) => ({
+      seq: p.seq,
+      principalPart: Number(p.principal_part),
+      feePart: Number(p.fee_part),
+      paid: isPaid(p),
+    })),
+    {
+      received: roundCents(input.received),
+      monthly: roundCents(input.monthly),
+      months: input.months,
+      nextDue: input.nextDue,
+      paidBefore: plan.source_txn_id ? undefined : input.paidBefore,
+    },
+  );
+  if ("error" in edited) return edited;
+
+  // Swap the unpaid payments for the new ones, putting the old back if that fails.
+  const unpaid = payments.filter((p) => !isPaid(p));
+  if (unpaid.length) {
+    const { error } = await supabase.from("scheduled_payments").delete().in("id", unpaid.map((p) => p.id));
+    if (error) return FAILED;
+  }
+  const restore = async () => {
+    if (unpaid.length) {
+      await supabase.from("scheduled_payments").insert(
+        unpaid.map((p) => ({
+          plan_id: plan.id,
+          seq: p.seq,
+          due_on: p.due_on,
+          amount: p.amount,
+          principal_part: p.principal_part,
+          fee_part: p.fee_part,
+        })),
+      );
+    }
+  };
+  if (edited.rows.length) {
+    const { error } = await supabase.from("scheduled_payments").insert(
+      edited.rows.map((r) => ({
+        plan_id: plan.id,
+        seq: r.seq,
+        due_on: r.dueOn,
+        amount: r.amount,
+        principal_part: r.principalPart,
+        fee_part: r.feePart,
+      })),
+    );
+    if (error) {
+      await restore();
+      return FAILED;
+    }
+  }
+
+  const dues = [...payments.filter(isPaid).map((p) => p.due_on), ...edited.rows.map((r) => r.dueOn)].sort();
+  const [planUpdate, accountUpdate, sourceUpdate] = await Promise.all([
+    supabase
+      .from("installment_plans")
+      .update({
+        name,
+        principal: roundCents(input.received),
+        fee_total: edited.feeTotal,
+        months: input.months,
+        first_due: dues[0] ?? input.nextDue,
+        pay_from_account_id: input.payFromAccountId,
+      })
+      .eq("id", plan.id),
+    // Already paying when added: no transfer in, so the loan starts at what was owed.
+    supabase
+      .from("accounts")
+      .update(plan.source_txn_id ? { name } : { name, starting_balance: -edited.owedAtStart })
+      .eq("id", accountId),
+    plan.source_txn_id
+      ? supabase.from("transactions").update({ amount: roundCents(input.received) }).eq("id", plan.source_txn_id)
+      : Promise.resolve({ error: null }),
+  ]);
+  if (planUpdate.error || accountUpdate.error || sourceUpdate.error) return FAILED;
+
+  refresh();
+  return {};
 }
 
 /**
