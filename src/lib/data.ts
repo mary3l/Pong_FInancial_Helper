@@ -1,15 +1,20 @@
 import "server-only";
 import { connection } from "next/server";
+import { subcategoryOptions } from "@/lib/categories";
 import { addDays } from "@/lib/dates";
 import { scheduledItems, sortItems, type ForecastItem, type ScheduleInputs } from "@/lib/forecast";
+import { getUsdRate, type UsdRate } from "@/lib/fx";
 import type { PriceMemory } from "@/lib/grocery";
 import {
   countsAsSpending,
+  isCurrency,
   isInterestPayout,
   isSpendable,
   isWalletPurpose,
+  pesoTotal,
   roundCents,
   type AccountType,
+  type Currency,
   type InterestPayout,
   type TransactionType,
   type WalletPurpose,
@@ -42,6 +47,23 @@ export type Account = {
   interestSince: string | null;
   /** When the bank credits it: daily (MariBank) or on the 1st (GoTyme Go Save). */
   interestPayout: InterestPayout;
+  /** A savings target, like a GoTyme GoalSave (migration 0016). */
+  goalAmount: number | null;
+  /** The goal's deadline, if it has one. */
+  goalDate: string | null;
+  /** Balance and transactions are in this currency (migration 0017). */
+  currency: Currency;
+  /**
+   * USD wallets: pesos per US$1 it's worth now, to count it in pesos. Today's
+   * rate when a feed answers, else `boughtAt`. Null for pesos.
+   */
+  fxRate: number | null;
+  /** USD wallets: the rate you got for these dollars, on average. What the gain is measured from. */
+  boughtAt: number | null;
+  /** USD wallets valued at today's rate: the day the feed last updated. Null when using `boughtAt`. */
+  fxAsOf: string | null;
+  /** Time deposits: the day it matures. */
+  maturesOn: string | null;
 };
 
 export type Transaction = {
@@ -50,7 +72,11 @@ export type Transaction = {
   amount: number;
   accountId: string;
   toAccountId: string | null;
+  /** A transfer between pesos and dollars: what landed, in the destination's currency (migration 0017). */
+  toAmount: number | null;
   category: string | null;
+  /** Typed in Add, like "Jeep" under Transpo (migration 0015). */
+  subcategory: string | null;
   note: string | null;
   occurredOn: string;
   /** When it was logged (an ISO timestamp); shown as the time of day. */
@@ -160,22 +186,31 @@ export async function getAccounts({ includeArchived = false, includePeople = fal
   const base = "id, name, type, starting_balance, credit_limit, due_day, archived";
 
   const wallet = `${base}, purpose, interest_rate, interest_since`;
+  const payout = `${wallet}, interest_payout`;
+  const goals = `${payout}, goal_amount, goal_date`;
 
   const [first, balances] = await Promise.all([
-    select(`${wallet}, interest_payout`),
+    select(`${goals}, currency, fx_rate, matures_on`),
     supabase.from("account_balances").select("account_id, balance"),
   ]);
-  // 42703: migration 0011 (or 0010) hasn't been run yet. Interest is then
-  // credited daily, and without 0010 every wallet is spending money.
-  const second = first.error?.code === "42703" ? await select(wallet) : first;
-  const accounts = second.error?.code === "42703" ? await select(base) : second;
+  // 42703: migration 0017 (or 0016, 0011, 0010) hasn't been run yet. Every
+  // wallet is then in pesos, wallets have no goals, interest is credited
+  // daily, and without 0010 every wallet is spending money.
+  let accounts = first;
+  for (const columns of [goals, payout, wallet, base]) {
+    if (accounts.error?.code !== "42703") break;
+    accounts = await select(columns);
+  }
   if (accounts.error) throw dbError(accounts.error);
   if (balances.error) throw dbError(balances.error);
 
   const balanceById = new Map(
     balances.data.map((b) => [b.account_id as string, Number(b.balance)]),
   );
-  return (accounts.data as unknown as AccountRow[]).map((a) => ({
+  const rows = accounts.data as unknown as AccountRow[];
+  // Dollar wallets count at today's rate; only looked up when you have one.
+  const today = rows.some((a) => a.currency === "USD") ? await getUsdRate() : null;
+  return rows.map((a) => ({
     id: a.id,
     name: a.name,
     type: a.type as AccountType,
@@ -188,7 +223,21 @@ export async function getAccounts({ includeArchived = false, includePeople = fal
     interestRate: a.interest_rate == null ? null : Number(a.interest_rate),
     interestSince: a.interest_since ?? null,
     interestPayout: isInterestPayout(a.interest_payout) ? a.interest_payout : "daily",
+    goalAmount: a.goal_amount == null ? null : Number(a.goal_amount),
+    goalDate: a.goal_date ?? null,
+    currency: isCurrency(a.currency) ? a.currency : "PHP",
+    ...dollarRates(a, today),
+    maturesOn: a.matures_on ?? null,
   }));
+}
+
+/** A USD wallet's rates: worth now (today's, else yours) and what you got. */
+function dollarRates(a: AccountRow, today: UsdRate | null) {
+  const boughtAt = a.currency === "USD" && a.fx_rate != null ? Number(a.fx_rate) : null;
+  if (boughtAt === null) return { fxRate: null, boughtAt: null, fxAsOf: null };
+  return today
+    ? { fxRate: today.rate, boughtAt, fxAsOf: today.asOf }
+    : { fxRate: boughtAt, boughtAt, fxAsOf: null };
 }
 
 type AccountRow = {
@@ -203,6 +252,11 @@ type AccountRow = {
   interest_rate?: number | string | null;
   interest_since?: string | null;
   interest_payout?: string;
+  goal_amount?: number | string | null;
+  goal_date?: string | null;
+  currency?: string;
+  fx_rate?: number | string | null;
+  matures_on?: string | null;
 };
 
 /** The last day interest was logged on each wallet, by account id. */
@@ -616,11 +670,8 @@ export async function getPlanInputs(today: string, days: number): Promise<PlanIn
     inWallets: roundCents(
       accounts.filter((a) => countsAsSpending(a)).reduce((sum, a) => sum + a.balance, 0),
     ),
-    setAside: roundCents(
-      accounts
-        .filter((a) => isSpendable(a.type) && !countsAsSpending(a))
-        .reduce((sum, a) => sum + a.balance, 0),
-    ),
+    // Dollar wallets count here, in pesos.
+    setAside: pesoTotal(accounts.filter((a) => isSpendable(a.type) && !countsAsSpending(a))),
     payday: recurring.find((r) => r.kind === "payday") ?? null,
     people,
     items: sortItems([
@@ -648,6 +699,8 @@ export async function getScheduled(today: string) {
 const TXN_BASE = "id, type, amount, account_id, to_account_id, category, note, occurred_on, created_at";
 const TXN_COLUMNS = `${TXN_BASE}, split_id`;
 const TXN_WITH_TIME = `${TXN_COLUMNS}, occurred_time`;
+const TXN_WITH_SUB = `${TXN_WITH_TIME}, subcategory`;
+const TXN_ALL = `${TXN_WITH_SUB}, to_amount`;
 
 type TxnRow = {
   id: string;
@@ -662,6 +715,10 @@ type TxnRow = {
   split_id?: string | null;
   /** "15:42:00" (migration 0014). */
   occurred_time?: string | null;
+  /** Migration 0015. */
+  subcategory?: string | null;
+  /** Migration 0017. */
+  to_amount?: number | string | null;
 };
 
 function toTransaction(r: TxnRow): Transaction {
@@ -671,7 +728,9 @@ function toTransaction(r: TxnRow): Transaction {
     amount: Number(r.amount),
     accountId: r.account_id,
     toAccountId: r.to_account_id,
+    toAmount: r.to_amount == null ? null : Number(r.to_amount),
     category: r.category,
+    subcategory: r.subcategory ?? null,
     note: r.note,
     occurredOn: r.occurred_on,
     createdAt: r.created_at ?? null,
@@ -683,14 +742,14 @@ function toTransaction(r: TxnRow): Transaction {
 type Read<T> = PromiseLike<{ data: T; error: { code?: string; message: string } | null }>;
 
 /**
- * Reads transactions with occurred_time and split_id, dropping each while
- * its migration (0014, 0012) hasn't been run (42703). Without the time,
- * rows show when they were logged; without split_id, splits show record by
- * record.
+ * Reads transactions with to_amount, subcategory, occurred_time and split_id,
+ * dropping each while its migration (0017, 0015, 0014, 0012) hasn't been run (42703).
+ * Without the time, rows show when they were logged; without split_id,
+ * splits show record by record.
  */
 async function readTxns<T>(run: (columns: string) => Read<T>) {
-  let result = await run(TXN_WITH_TIME);
-  for (const columns of [TXN_COLUMNS, TXN_BASE]) {
+  let result = await run(TXN_ALL);
+  for (const columns of [TXN_WITH_SUB, TXN_WITH_TIME, TXN_COLUMNS, TXN_BASE]) {
     if (result.error?.code !== "42703") break;
     result = await run(columns);
   }
@@ -725,7 +784,10 @@ export async function getTransactions({
     if (from) query = query.gte("occurred_on", from);
     if (to) query = query.lte("occurred_on", to);
     if (accountId) query = query.or(`account_id.eq.${accountId},to_account_id.eq.${accountId}`);
-    if (term) query = query.or(`note.ilike.%${term}%,category.ilike.%${term}%`);
+    if (term) {
+      const sub = columns.includes("subcategory") ? `,subcategory.ilike.%${term}%` : "";
+      query = query.or(`note.ilike.%${term}%,category.ilike.%${term}%${sub}`);
+    }
     if (limit) query = query.limit(limit);
     return query;
   });
@@ -741,6 +803,23 @@ export async function getTransaction(id: string): Promise<Transaction | null> {
   );
   if (error) throw dbError(error);
   return data ? toTransaction(data as unknown as TxnRow) : null;
+}
+
+/**
+ * The subcategories you've typed before, by category, most used first.
+ * Empty while migration 0015 hasn't been run.
+ */
+export async function getSubcategories(): Promise<Record<string, string[]>> {
+  const supabase = await db();
+  const { data, error } = await supabase
+    .from("transactions")
+    .select("category, subcategory")
+    .not("subcategory", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(2000);
+  if (error?.code === "42703") return {};
+  if (error) throw dbError(error);
+  return subcategoryOptions(data);
 }
 
 /** False while migration 0012 (transactions.split_id) hasn't been run. */
@@ -797,9 +876,11 @@ export async function getSplitsPaidWith(accountId: string): Promise<Map<string, 
 export function templatesFrom(recent: Transaction[], walletIds: Set<string>, max = 4): Template[] {
   const seen = new Map<string, { template: Template; count: number; order: number }>();
   recent.forEach((t, order) => {
-    if (!walletIds.has(t.accountId)) return;
+    if (!walletIds.has(t.accountId) || t.category === "adjustment") return;
+    // Pesos to dollars depends on the day's rate: type it each time.
+    if (t.toAmount !== null) return;
     if (t.toAccountId && !walletIds.has(t.toAccountId)) return;
-    const key = [t.type, t.amount, t.category, t.accountId, t.toAccountId, t.note ?? ""].join("|");
+    const key = [t.type, t.amount, t.category, t.subcategory ?? "", t.accountId, t.toAccountId, t.note ?? ""].join("|");
     const hit = seen.get(key);
     if (hit) hit.count += 1;
     else {
@@ -808,7 +889,9 @@ export function templatesFrom(recent: Transaction[], walletIds: Set<string>, max
         amount: t.amount,
         accountId: t.accountId,
         toAccountId: t.toAccountId,
+        toAmount: null,
         category: t.category,
+        subcategory: t.subcategory,
         note: t.note,
       };
       seen.set(key, { template, count: 1, order });

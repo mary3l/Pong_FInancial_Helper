@@ -2,7 +2,7 @@
 
 import { refresh } from "next/cache";
 import { SIGNED_OUT_ERROR, signedInClient } from "@/lib/auth";
-import { isCategoryFor } from "@/lib/categories";
+import { SUBCATEGORY_MAX, cleanSubcategory, isCategoryFor } from "@/lib/categories";
 import { isValidDate, today } from "@/lib/dates";
 import { bnplFee, bnplFirstDue, buildSchedule, catchUpDue } from "@/lib/installments";
 import { MAX_AMOUNT, isSpendable, roundCents, type AccountType } from "@/lib/money";
@@ -182,12 +182,12 @@ export async function recordPayment(personId: string, amount: number, walletId: 
   return { personId };
 }
 
-/** One tap from Coming up: settles the whole balance with your usual wallet. */
-export async function settlePerson(personId: string): Promise<PeopleResult> {
+/** From Coming up: settles the whole balance with the wallet picked, or your first one. */
+export async function settlePerson(personId: string, walletId?: string): Promise<PeopleResult> {
   const supabase = await signedInClient();
   if (!supabase) return { error: SIGNED_OUT_ERROR };
-  const [balance, wallet] = await Promise.all([balanceOf(supabase, personId), pickWallet(supabase, null)]);
-  if (!wallet) return { error: "Add a wallet first." };
+  const [balance, wallet] = await Promise.all([balanceOf(supabase, personId), pickWallet(supabase, null, walletId)]);
+  if (!wallet) return { error: walletId ? "Pick a cash, bank or e-wallet." : "Add a wallet first." };
   if (!balance) return {};
   return recordPayment(personId, Math.abs(balance), wallet);
 }
@@ -223,6 +223,8 @@ export async function forgive(personId: string): Promise<PeopleResult> {
 export type SplitInput = {
   total: number;
   category: string;
+  /** Typed in Add, like "Merienda" under Food. */
+  subcategory?: string | null;
   note: string;
   occurredOn: string;
   /** Null when you paid. */
@@ -266,9 +268,19 @@ export async function saveSplit(input: SplitInput): Promise<PeopleResult> {
   if (!(mine >= 0) || input.others.some((o) => !(o.amount >= 0))) return { error: "Check the shares." };
   const sum = roundCents(mine + input.others.reduce((s, o) => s + roundCents(o.amount), 0));
   if (sum !== total) return { error: `The shares add up to ₱${sum}, not ₱${total}.` };
+  const subcategory = cleanSubcategory(input.subcategory);
+  if (subcategory && subcategory.length > SUBCATEGORY_MAX) {
+    return { error: `Keep the subcategory to ${SUBCATEGORY_MAX} characters.` };
+  }
 
   const supabase = await signedInClient();
   if (!supabase) return { error: SIGNED_OUT_ERROR };
+  // Only on your share; before migration 0015 there's nowhere to keep it.
+  const sub = subcategory ? { subcategory } : {};
+  if (subcategory) {
+    const { error } = await supabase.from("transactions").select("subcategory").limit(1);
+    if (error) return { error: "To save subcategories, run step 15 in supabase/SQL_GUIDE.md first. Or clear the subcategory." };
+  }
   const note = cleanNote(input.note);
   const created: string[] = [];
   const undo = async () => {
@@ -303,6 +315,7 @@ export async function saveSplit(input: SplitInput): Promise<PeopleResult> {
           amount: mine,
           account_id: input.walletId,
           category: input.category,
+          ...sub,
           note: note ? `${note} (my share)` : "My share",
           occurred_on: input.occurredOn,
           ...split,
@@ -366,6 +379,7 @@ export async function saveSplit(input: SplitInput): Promise<PeopleResult> {
           amount: mine,
           account_id: payer,
           category: input.category,
+          ...sub,
           note: note ? `${note} (my share)` : "My share",
           occurred_on: input.occurredOn,
         },

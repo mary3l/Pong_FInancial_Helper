@@ -44,6 +44,25 @@ export const TRANSFER_ICON: Omit<Category, "key" | "label"> = {
   icon: "M7 7h13l-4-4M17 17H4l4 4",
 };
 
+/**
+ * Balance adjustments: an income (up) or expense (down) with this category,
+ * made from a wallet's "Adjust balance" so it matches what's really in it.
+ * Not in either list, so Add can't pick it, and never counted as spending
+ * or income: like a transfer, it only changes the wallet's balance.
+ */
+export const ADJUSTMENT = "adjustment";
+
+export const ADJUSTMENT_INFO: Category = {
+  key: ADJUSTMENT,
+  label: "Balance adjustment",
+  tint: "bg-line-soft",
+  icon: "M4 7h10M18 7h2M4 17h4M12 17h8M16 5v4M10 15v4",
+};
+
+export function isAdjustment(txn: { type: TransactionType; category: string | null }): boolean {
+  return txn.type !== "transfer" && txn.category === ADJUSTMENT;
+}
+
 export function categoriesFor(type: TransactionType): Category[] {
   if (type === "expense") return EXPENSE_CATEGORIES;
   if (type === "income") return INCOME_CATEGORIES;
@@ -54,9 +73,51 @@ export function isCategoryFor(type: TransactionType, key: unknown): boolean {
   return categoriesFor(type).some((c) => c.key === key);
 }
 
+export const SUBCATEGORY_MAX = 40;
+
+/** A typed subcategory with its spaces tidied; null when there's nothing left. */
+export function cleanSubcategory(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const text = value.replace(/\s+/g, " ").trim();
+  return text || null;
+}
+
+/**
+ * The subcategories used before in each category, most used first (ties:
+ * most recent first). `rows` is newest first; "jeep" and "Jeep" are one,
+ * spelled the newest way.
+ */
+export function subcategoryOptions(
+  rows: { category: string | null; subcategory: string | null }[],
+): Record<string, string[]> {
+  const byCategory = new Map<string, Map<string, { name: string; count: number; order: number }>>();
+  rows.forEach((r, order) => {
+    const name = cleanSubcategory(r.subcategory);
+    if (!r.category || !name) return;
+    const seen = byCategory.get(r.category) ?? new Map();
+    const hit = seen.get(name.toLowerCase());
+    if (hit) hit.count += 1;
+    else seen.set(name.toLowerCase(), { name, count: 1, order });
+    byCategory.set(r.category, seen);
+  });
+  return Object.fromEntries(
+    [...byCategory].map(([category, seen]) => [
+      category,
+      [...seen.values()].sort((a, b) => b.count - a.count || a.order - b.order).map((s) => s.name),
+    ]),
+  );
+}
+
+/** "Transpo › Jeep", or just "Transpo". */
+export function categoryLabel(type: TransactionType, key: string | null, subcategory?: string | null) {
+  const label = categoryInfo(type, key).label;
+  return subcategory && type !== "transfer" ? `${label} › ${subcategory}` : label;
+}
+
 /** Display info for a stored transaction, including old or unknown keys. */
 export function categoryInfo(type: TransactionType, key: string | null) {
   if (type === "transfer") return { label: "Transfer", ...TRANSFER_ICON };
+  if (key === ADJUSTMENT) return ADJUSTMENT_INFO;
   const found = categoriesFor(type).find((c) => c.key === key);
   if (found) return found;
   const fallback = categoriesFor(type).at(-1)!;

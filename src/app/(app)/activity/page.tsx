@@ -13,7 +13,7 @@ import {
   previousPeriod,
   today as getToday,
 } from "@/lib/dates";
-import { cashflow, formatPeso } from "@/lib/money";
+import { cashflow, formatPeso, inPesos } from "@/lib/money";
 
 export const metadata = { title: "Activity · Pong Money" };
 
@@ -41,7 +41,8 @@ async function Activity({ searchParams }: Pick<PageProps<"/activity">, "searchPa
     getAccounts({ includeArchived: true, includePeople: true }),
     getTransactions({ from: period.start, to: period.end, search: q }).then(withoutArchived),
   ]);
-  const totals = cashflow(transactions);
+  // Interest on a dollar wallet counts in pesos.
+  const totals = cashflow(inPesos(transactions, accounts));
 
   const href = (start: string) => {
     const query = new URLSearchParams({ p: start });

@@ -342,6 +342,86 @@ where table_name = 'transactions' and column_name = 'occurred_time';
 
 Expect `1`.
 
+## Step 15 · Subcategories
+
+File: `migrations/0015_subcategories.sql`
+
+Lets you type your own **subcategory** under a category in Add and Edit, like
+Transpo › Jeep or Food › Merienda. The ones you've used before show up as chips next
+time, most used first.
+
+- `transactions.subcategory`: what you typed, up to 40 characters. Empty for older
+  records and transfers.
+
+Until you run this, the app still works without subcategories; saving one asks you to
+run this step.
+
+**Check**
+
+```sql
+select count(*) from information_schema.columns
+where table_name = 'transactions' and column_name = 'subcategory';
+```
+
+Expect `1`.
+
+## Step 16 · Savings goals (GoTyme GoalSave)
+
+File: `migrations/0016_wallet_goals.sql`
+
+Gives a Savings, Emergency fund or Investments wallet a **goal**: how much you're saving
+for and, if you like, by when. It works like a GoTyme GoalSave, so add each GoalSave as
+its own wallet. With a date, Money shows what to put in every day, week or month to get
+there, counting the wallet's interest (GoTyme works it out daily and adds it on the 1st,
+after the 20% tax).
+
+- `accounts.goal_amount`: the target in pesos. Empty means no goal.
+- `accounts.goal_date`: the deadline. Optional, and only with a goal amount.
+
+Until you run this, wallets work as before; saving a goal asks you to run this step.
+
+**Check**
+
+```sql
+select count(*) from information_schema.columns
+where table_name = 'accounts' and column_name in ('goal_amount', 'goal_date');
+```
+
+Expect `2`.
+
+## Step 17 · Dollar wallets and time deposits (GoTyme USD Time Deposit)
+
+File: `migrations/0017_usd_time_deposits.sql`
+
+Lets a wallet hold **US dollars**, and lets a wallet be a **time deposit** that pays its
+interest when it matures. Name a wallet "GoTyme USD" and Money offers to set it up.
+
+- `accounts.currency`: `PHP` (every wallet you have now) or `USD`. A wallet's balance and
+  its transactions are in its own currency. It's picked when you add the wallet.
+- `accounts.fx_rate`: pesos per US$1, which you set. Dollars count in You have and Net
+  worth at this rate. They're never spending money, so never in Safe to spend.
+- `accounts.matures_on`: when a time deposit matures. Interest builds up daily and is
+  added that day, after a 15% tax on dollars (20% on pesos).
+- `accounts.interest_payout` can now also be `maturity`.
+- `transactions.to_amount`: on a transfer between a peso and a dollar wallet, what
+  landed (₱5,850 out, $100 in).
+- A check on every transaction makes sure a transfer between pesos and dollars says
+  what landed, and that nothing is bought with dollars (they only move by transfer).
+- `account_balances` is replaced so a transfer adds what landed.
+
+Until you run this, every wallet is in pesos; adding a dollar wallet or a time deposit
+asks you to run this step.
+
+**Check**
+
+```sql
+select count(*) from information_schema.columns
+where (table_name = 'accounts' and column_name in ('currency', 'fx_rate', 'matures_on'))
+   or (table_name = 'transactions' and column_name = 'to_amount');
+```
+
+Expect `4`.
+
 ## Step 18 · Your own contribution amounts
 
 File: `migrations/0018_contribution_amounts.sql`
@@ -390,6 +470,14 @@ select
   exists (select 1 from information_schema.columns
           where table_name = 'transactions' and column_name = 'split_id') as step_12,
   to_regclass('public.payroll_settings') is not null        as step_13,
+  exists (select 1 from information_schema.columns
+          where table_name = 'transactions' and column_name = 'occurred_time') as step_14,
+  exists (select 1 from information_schema.columns
+          where table_name = 'transactions' and column_name = 'subcategory') as step_15,
+  exists (select 1 from information_schema.columns
+          where table_name = 'accounts' and column_name = 'goal_amount') as step_16,
+  exists (select 1 from information_schema.columns
+          where table_name = 'transactions' and column_name = 'to_amount') as step_17,
   exists (select 1 from information_schema.columns
           where table_name = 'payroll_settings' and column_name = 'sss_amount') as step_18;
 ```

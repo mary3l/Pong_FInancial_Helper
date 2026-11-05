@@ -3,7 +3,7 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { getAccounts } from "@/lib/data";
 import { today } from "@/lib/dates";
-import { isSpendable } from "@/lib/money";
+import { paysInPesos } from "@/lib/money";
 import { LoanForm } from "./loan-form";
 
 export const metadata = { title: "Add loan · Pong Money" };
@@ -24,5 +24,5 @@ export default function NewLoanPage() {
 async function Loan() {
   await connection();
   const accounts = await getAccounts();
-  return <LoanForm wallets={accounts.filter((a) => isSpendable(a.type))} today={today()} />;
+  return <LoanForm wallets={accounts.filter((a) => paysInPesos(a))} today={today()} />;
 }

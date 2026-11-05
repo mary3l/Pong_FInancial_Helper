@@ -1,6 +1,6 @@
 import { TransactionForm, type Prefill } from "@/components/transaction-form";
 import { isCategoryFor } from "@/lib/categories";
-import { getAccounts, getPeople, getTransactions, templatesFrom } from "@/lib/data";
+import { getAccounts, getPeople, getSubcategories, getTransactions, templatesFrom } from "@/lib/data";
 import { today } from "@/lib/dates";
 import { parseAmount } from "@/lib/money";
 
@@ -8,7 +8,8 @@ type Params = Record<string, string | string[] | undefined>;
 
 /**
  * Reads `?type=income&amount=…&category=…&account=…&note=…&link=…`, which
- * scheduled items use to open Add filled in.
+ * scheduled items use to open Add filled in. `?account=…` alone (a wallet's
+ * + Add) just picks the wallet.
  */
 function prefillFrom(params: Params): Prefill | undefined {
   const get = (key: string) => {
@@ -16,6 +17,10 @@ function prefillFrom(params: Params): Prefill | undefined {
     return typeof value === "string" ? value : "";
   };
   const type = get("type");
+  // From a wallet's + Add: just the wallet, as an expense to start.
+  if (!type && get("account")) {
+    return { type: "expense", amount: null, category: null, accountId: get("account"), note: "", link: null };
+  }
   if (type !== "expense" && type !== "income") return undefined;
   const amount = parseAmount(get("amount"));
   const category = get("category");
@@ -39,10 +44,11 @@ export async function AddTransaction({
   mode: "modal" | "page";
   searchParams?: Promise<Params>;
 }) {
-  const [accounts, recent, people, params] = await Promise.all([
+  const [accounts, recent, people, subcategories, params] = await Promise.all([
     getAccounts(),
     getTransactions({ limit: 60 }),
     getPeople(),
+    getSubcategories(),
     searchParams ?? Promise.resolve<Params>({}),
   ]);
   const templates = templatesFrom(recent, new Set(accounts.map((a) => a.id)));
@@ -56,6 +62,7 @@ export async function AddTransaction({
       prefill={prefillFrom(params)}
       people={people.map((p) => ({ id: p.id, name: p.name }))}
       startSplit={params.split === "1"}
+      subcategories={subcategories}
     />
   );
 }

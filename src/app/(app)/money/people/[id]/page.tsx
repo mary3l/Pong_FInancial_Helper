@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { getCurrentUser } from "@/lib/auth";
 import { getAccounts, getPeople, getTransactions } from "@/lib/data";
 import { formatShortDay, today as getToday } from "@/lib/dates";
-import { balanceEffect, formatPeso, isSpendable } from "@/lib/money";
+import { balanceEffect, formatPeso, paysInPesos } from "@/lib/money";
 import { dueDate, isOverdue, reminderText, type PersonEntry } from "@/lib/people";
 import { Avatar } from "../avatar";
 import { EditPerson, ForgiveButton, PaymentForm, ReminderButton } from "../person-actions";
@@ -46,7 +46,7 @@ async function PersonDetail({ params }: Pick<PageProps<"/money/people/[id]">, "p
   if (!person) notFound();
 
   const names = new Map(accounts.map((a) => [a.id, a.name]));
-  const wallets = accounts.filter((a) => isSpendable(a.type) && !a.archived);
+  const wallets = accounts.filter((a) => paysInPesos(a) && !a.archived);
   const due = dueDate(person);
   const late = isOverdue(person, today);
   const owesYou = person.balance > 0;

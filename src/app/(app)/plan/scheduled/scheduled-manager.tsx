@@ -285,7 +285,7 @@ function ItemRow({
         {estimate && <span className="text-xs font-bold text-muted"> est.</span>}
       </span>
       <div className="flex w-full items-center justify-end gap-2 sm:w-auto">
-        {next && soon && <LogButton item={next} />}
+        {next && soon && <LogButton item={next} accounts={accounts} />}
         {row.payday ? (
           <Link href="/setup/payday?from=settings" className={linkClass}>
             Edit

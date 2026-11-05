@@ -147,7 +147,7 @@ async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams
                       {" · "}balance after{" "}
                       <span className={balanceAfter < 0 ? "font-bold text-coral-text" : ""}>{formatPeso(balanceAfter)}</span>
                     </span>
-                    {date < weekOut ? <LogButton item={item} /> : <span />}
+                    {date < weekOut ? <LogButton item={item} accounts={accounts} /> : <span />}
                   </li>
                 );
               })}

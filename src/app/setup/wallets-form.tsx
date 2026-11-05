@@ -10,7 +10,7 @@ import type { Account } from "@/lib/data";
 import {
   WALLET_TYPES,
   accountTypeLabel,
-  formatPeso,
+  formatBalance,
   parseAmount,
   type WalletType,
 } from "@/lib/money";
@@ -87,7 +87,7 @@ export function WalletsForm({ existing }: { existing: Account[] }) {
                 <span className="font-bold">{a.name}</span>
                 <span className="text-sm text-muted">{accountTypeLabel(a.type)}</span>
               </div>
-              <span className="font-display text-lg font-semibold">{formatPeso(a.balance)}</span>
+              <span className="font-display text-lg font-semibold">{formatBalance(a)}</span>
             </div>
           ))}
         </section>

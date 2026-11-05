@@ -4,19 +4,21 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { LogButton } from "@/components/log-button";
 import { getAccounts, getInstallmentPlans, getSplitsPaidWith, installmentInputs } from "@/lib/data";
-import { addDays, formatShortDay, today as getToday } from "@/lib/dates";
+import { addDays, formatShortDay, isValidDate, today as getToday } from "@/lib/dates";
 import { scheduledItems } from "@/lib/forecast";
 import { catchUpDue, dueText } from "@/lib/installments";
-import { formatPeso, isDebt, isSpendable, roundCents } from "@/lib/money";
+import { formatPeso, isDebt, isSpendable, paysInPesos, roundCents } from "@/lib/money";
 import { nextOccurrence } from "@/lib/schedule";
 import { toSplitBill, type SplitBill } from "@/lib/splits";
 import { AccountActions, PayBillButton, RemovePlanButton, UpcomingPayments } from "./account-actions";
 import { AddSplitsButton } from "./add-splits";
+import { WalletActivity } from "./wallet-activity";
 
-export const metadata = { title: "Credit line · Pong Money" };
+export const metadata = { title: "Account · Pong Money" };
 
 // Design canvas 4.2 (SPayLater detail) and the same view for a loan: what
 // you owe, the next bill with Pay bill, active plans and upcoming payments.
+// A wallet (cash, bank, e-wallet) shows its ins and outs per kinsenas instead.
 export default function AccountPage({ params, searchParams }: PageProps<"/money/[id]">) {
   return (
     <div className="flex flex-col gap-4 lg:max-w-3xl">
@@ -40,6 +42,10 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
     getSplitsPaidWith(id),
   ]);
   const account = accounts.find((a) => a.id === id);
+  if (account && isSpendable(account.type)) {
+    const p = typeof query.p === "string" && isValidDate(query.p) && query.p <= today ? query.p : today;
+    return <WalletActivity account={account} date={p} today={today} />;
+  }
   if (!account || !isDebt(account.type)) notFound();
 
   const owed = Math.max(0, roundCents(-account.balance));
@@ -265,7 +271,7 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
                           {split && <span className="text-[13px] text-muted">Split bill · {split.others.length + (split.mine ? 1 : 0)} people</span>}
                         </span>
                         <span className="font-display text-[17px] font-semibold">{formatPeso(item.amount ?? 0)}</span>
-                        <LogButton item={item} />
+                        <LogButton item={item} accounts={accounts} />
                       </div>
                       {split && <SplitBreakdown split={split} />}
                     </li>
@@ -289,7 +295,7 @@ async function Account({ params, searchParams }: PageProps<"/money/[id]">) {
             ? undefined
             : {
                 plan: plans.find((p) => p.kind === "loan") ?? null,
-                wallets: accounts.filter((a) => isSpendable(a.type) && !a.archived),
+                wallets: accounts.filter((a) => paysInPesos(a) && !a.archived),
                 today,
               }
         }

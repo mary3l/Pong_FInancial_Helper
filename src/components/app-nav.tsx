@@ -59,7 +59,7 @@ function BottomNavBar({ isActive }: { isActive: IsActive }) {
       ))}
       <Link
         href="/add"
-        aria-label="Add expense"
+        aria-label="Input transaction"
         className="-mt-8 flex h-[62px] w-[62px] items-center justify-center justify-self-center rounded-[22px] bg-sun text-ink shadow-[0_6px_16px_rgba(255,201,60,0.55)]"
       >
         <PlusIcon size={28} />
@@ -117,7 +117,7 @@ function SidebarPanel({ isActive }: { isActive: IsActive }) {
         className="flex h-[52px] items-center justify-center gap-2 rounded-[18px] bg-sun font-extrabold text-ink"
       >
         <PlusIcon size={20} />
-        Add expense
+        Input transaction
       </Link>
       <nav aria-label="Main" className="flex flex-col gap-1">
         {TABS.map(({ href, label, Icon }) => {

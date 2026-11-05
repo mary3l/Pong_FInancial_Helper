@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { PathIcon } from "@/components/icons";
-import { categoryInfo } from "@/lib/categories";
+import { categoryInfo, categoryLabel, isAdjustment } from "@/lib/categories";
 import type { Account, Transaction } from "@/lib/data";
 import { formatRelativeDay, formatShortDay, transactionTime } from "@/lib/dates";
-import { formatPeso } from "@/lib/money";
+import { balanceEffect, formatMoney, formatPeso, type Currency } from "@/lib/money";
 import { groupSplits, type ListItem, type SplitBill } from "@/lib/splits";
 
 /**
@@ -15,14 +15,19 @@ export function TransactionList({
   accounts,
   today,
   grouped = true,
+  walletId,
 }: {
   transactions: Transaction[];
   accounts: Account[];
   today: string;
   /** False for short lists that show the day on each row instead. */
   grouped?: boolean;
+  /** Viewed from one wallet: transfers show as money in or out of it. */
+  walletId?: string;
 }) {
   const names = new Map(accounts.map((a) => [a.id, a.name]));
+  // Amounts are in their wallet's currency: dollars on a USD time deposit.
+  const currencies = new Map(accounts.map((a) => [a.id, a.currency]));
   const days: { date: string; items: ListItem[] }[] = [];
   for (const item of groupSplits(transactions)) {
     const date = item.kind === "one" ? item.txn.occurredOn : item.split.occurredOn;
@@ -44,7 +49,7 @@ export function TransactionList({
             {day.items.map((item) => (
               <li key={itemKey(item)}>
                 {item.kind === "one" ? (
-                  <TransactionRow txn={item.txn} names={names} today={grouped ? null : today} />
+                  <TransactionRow txn={item.txn} names={names} currencies={currencies} today={grouped ? null : today} walletId={walletId} />
                 ) : (
                   <SplitRow split={item.split} names={names} today={grouped ? null : today} />
                 )}
@@ -118,30 +123,42 @@ function SplitRow({
 function TransactionRow({
   txn,
   names,
+  currencies,
   today,
+  walletId,
 }: {
   txn: Transaction;
   names: Map<string, string>;
+  currencies: Map<string, Currency>;
   /** Set to show the day in the row. */
   today: string | null;
+  walletId?: string;
 }) {
   const info = categoryInfo(txn.type, txn.category);
   const from = names.get(txn.accountId) ?? "Removed wallet";
   const to = txn.toAccountId ? (names.get(txn.toAccountId) ?? "Removed wallet") : "";
 
-  const title = txn.type === "transfer" ? `${from} → ${to}` : txn.note || info.label;
+  // Titled by the note, else the subcategory ("Jeep"), else the category.
+  const title = txn.type === "transfer" ? `${from} → ${to}` : txn.note || txn.subcategory || info.label;
+  const money = (value: number, accountId: string | null) => formatMoney(value, (accountId && currencies.get(accountId)) || "PHP");
   const detail =
     txn.type === "transfer"
-      ? [txn.note || "Transfer", "not spending"]
-      : [txn.note ? info.label : null, from];
+      ? [
+          txn.note || "Transfer",
+          // Pesos to dollars (or back): what landed.
+          txn.toAmount !== null && !walletId ? `${money(txn.toAmount, txn.toAccountId)} landed` : null,
+          "not spending",
+        ]
+      : isAdjustment(txn)
+        ? [txn.note ? info.label : null, from, "not spending"]
+        : [txn.note ? categoryLabel(txn.type, txn.category, txn.subcategory) : txn.subcategory ? info.label : null, from];
   detail.unshift(when(txn, today));
 
-  const amount =
-    txn.type === "expense"
-      ? `−${formatPeso(txn.amount)}`
-      : txn.type === "income"
-        ? `+${formatPeso(txn.amount)}`
-        : formatPeso(txn.amount);
+  // A transfer is neutral in Activity, but from one wallet it's money in or out of it.
+  const flow = walletId ? balanceEffect(txn, walletId) : txn.type === "income" ? 1 : txn.type === "expense" ? -1 : 0;
+  // From one wallet, what moved in its currency; elsewhere what left the first wallet.
+  const shown = walletId ? money(Math.abs(flow), walletId) : money(txn.amount, txn.accountId);
+  const amount = flow < 0 ? `−${shown}` : flow > 0 ? `+${shown}` : shown;
 
   return (
     <Link
@@ -157,12 +174,14 @@ function TransactionRow({
       </span>
       <span
         className={`shrink-0 font-display text-[17px] font-semibold ${
-          txn.type === "income" ? "text-sea" : txn.type === "transfer" ? "text-muted" : ""
+          flow > 0 ? "text-sea" : txn.type === "transfer" && !walletId ? "text-muted" : ""
         }`}
       >
         {amount}
       </span>
-      <span className="sr-only">{txn.type === "transfer" ? "Transfer" : txn.type === "income" ? "Income" : "Expense"}, edit</span>
+      <span className="sr-only">
+        {txn.type === "transfer" ? "Transfer" : isAdjustment(txn) ? "Balance adjustment" : txn.type === "income" ? "Income" : "Expense"}, edit
+      </span>
     </Link>
   );
 }

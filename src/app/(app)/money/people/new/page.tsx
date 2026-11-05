@@ -3,7 +3,7 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { getAccounts, getPeople } from "@/lib/data";
 import { today } from "@/lib/dates";
-import { isSpendable } from "@/lib/money";
+import { paysInPesos } from "@/lib/money";
 import { LendForm } from "./lend-form";
 
 export const metadata = { title: "Lend / borrow · Pong Money" };
@@ -26,7 +26,7 @@ async function Lend({ searchParams }: Pick<PageProps<"/money/people/new">, "sear
   const [{ who, direction }, accounts, people] = await Promise.all([searchParams, getAccounts(), getPeople()]);
   return (
     <LendForm
-      wallets={accounts.filter((a) => isSpendable(a.type))}
+      wallets={accounts.filter((a) => paysInPesos(a))}
       people={people.map((p) => ({ id: p.id, name: p.name }))}
       initialPerson={typeof who === "string" ? who : null}
       initialDirection={direction === "borrow" ? "borrow" : "lend"}

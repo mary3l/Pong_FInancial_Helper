@@ -12,12 +12,16 @@ import {
   type InstallmentPlan,
 } from "@/lib/data";
 import { formatShortDay, today as getToday } from "@/lib/dates";
+import { getUsdRate } from "@/lib/fx";
 import {
   dailyInterest,
   formatPeso,
   interestEstimate,
+  interestTax,
   isDebt,
   isSpendable,
+  pesoTotal,
+  pesoValue,
   roundCents,
   type InterestEstimate,
 } from "@/lib/money";
@@ -46,12 +50,13 @@ async function Wallets() {
   // Read the clock only at request time (Cache Components).
   await connection();
   const today = getToday();
-  const [accounts, plans, recurring, people, lastInterest] = await Promise.all([
+  const [accounts, plans, recurring, people, lastInterest, usdRate] = await Promise.all([
     getAccounts({ includeArchived: true }),
     getInstallmentPlans(),
     getRecurringItems(),
     getPeople(),
     getLastInterest(),
+    getUsdRate(),
   ]);
   const active = accounts.filter((a) => !a.archived);
   const wallets = active.filter((a) => isSpendable(a.type));
@@ -68,10 +73,16 @@ async function Wallets() {
     if (!a.interestRate) continue;
     accrued[a.id] = interestEstimate({ ...a, interestRate: a.interestRate }, lastInterest.get(a.id) ?? null, today);
   }
+  // In pesos; a time deposit stops earning once it matures.
   const interestPerMonth = roundCents(
-    wallets.reduce((sum, a) => sum + (a.interestRate ? dailyInterest(a.balance, a.interestRate) * 30 : 0), 0),
+    wallets.reduce((sum, a) => {
+      if (!a.interestRate || (a.interestPayout === "maturity" && a.maturesOn && a.maturesOn <= today)) return sum;
+      const perMonth = dailyInterest(a.balance, a.interestRate, interestTax(a.currency)) * 30;
+      return sum + pesoValue({ ...a, balance: perMonth });
+    }, 0),
   );
-  const have = roundCents(wallets.reduce((sum, a) => sum + a.balance, 0));
+  // Dollars count at the rate set on each wallet.
+  const have = pesoTotal(wallets);
   // Pautang is still your money; utang is money you owe.
   const owedToYou = roundCents(people.reduce((sum, p) => sum + Math.max(0, p.balance), 0));
   const owe = roundCents(
@@ -114,6 +125,7 @@ async function Wallets() {
             accounts={accounts.filter((a) => isSpendable(a.type) || a.archived)}
             accrued={accrued}
             today={today}
+            usdRate={usdRate?.rate ?? null}
           />
         </section>
 

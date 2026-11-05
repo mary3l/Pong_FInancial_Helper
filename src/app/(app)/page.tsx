@@ -19,7 +19,20 @@ import {
   today as getToday,
 } from "@/lib/dates";
 import { itemLabel, project, safeToSpend, type ForecastItem, type SafeToSpend } from "@/lib/forecast";
-import { accountTypeLabel, formatPeso, isDebt, isSpendable, purposeLabel, roundCents } from "@/lib/money";
+import { getUsdRate } from "@/lib/fx";
+import {
+  accountTypeLabel,
+  formatBalance,
+  formatMoney,
+  formatPeso,
+  fxGain,
+  isDebt,
+  isSpendable,
+  pesoTotal,
+  pesoValue,
+  purposeLabel,
+  roundCents,
+} from "@/lib/money";
 import { dueDate, isOverdue } from "@/lib/people";
 
 // Design canvas 2.1: Safe to spend (with its breakdown), Coming up (bills and
@@ -94,6 +107,7 @@ async function Dashboard() {
   const dueSoon = items.filter((i) => i.dueOn < weekOut && (i.dueOn >= today || !i.transactionId));
   const hasScheduled = items.some((i) => i.kind !== "planned");
   const wallets = accounts.filter((a) => isSpendable(a.type));
+  const dollars = wallets.filter((a) => a.currency === "USD");
   const overdue = people.filter((p) => isOverdue(p, today));
   const owed = roundCents(accounts.filter((a) => isDebt(a.type)).reduce((sum, a) => sum + Math.max(0, -a.balance), 0));
 
@@ -174,7 +188,7 @@ async function Dashboard() {
                     </span>
                   </span>
                   <span className={`font-display text-[17px] font-semibold ${a.balance < 0 ? "text-coral-text" : ""}`}>
-                    {formatPeso(a.balance)}
+                    {formatBalance(a)}
                   </span>
                 </div>
               ))
@@ -240,6 +254,8 @@ async function Dashboard() {
             )}
           </div>
         </section>
+
+        {dollars.length > 0 && <DollarsCard wallets={dollars} today={today} />}
       </div>
     </div>
   );
@@ -305,8 +321,78 @@ function DueRow({ item, accounts, today }: { item: ForecastItem; accounts: Accou
         )}
         {item.amount === null ? "₱?" : `${incoming ? "+" : ""}${formatPeso(item.amount)}`}
       </span>
-      <LogButton item={item} />
+      <LogButton item={item} accounts={accounts} />
     </li>
+  );
+}
+
+/**
+ * Your dollars (a GoTyme USD Time Deposit) at today's rate, and how many
+ * pesos more (or less) that is than the rate you got for them.
+ */
+async function DollarsCard({ wallets, today }: { wallets: Account[]; today: string }) {
+  const rate = await getUsdRate();
+  const total = roundCents(wallets.reduce((sum, a) => sum + a.balance, 0));
+  const worth = pesoTotal(wallets);
+  const gain = roundCents(wallets.reduce((sum, a) => sum + fxGain(a), 0));
+  const one = wallets.length === 1 ? wallets[0] : null;
+
+  return (
+    <section aria-labelledby="dollars-heading" className="flex flex-col gap-2.5">
+      <div className="flex items-baseline justify-between">
+        <h2 id="dollars-heading" className="font-display text-xl font-semibold">US dollars</h2>
+        <Link href={one ? `/money/${one.id}` : "/money"} className="text-sm font-extrabold text-sea">
+          {one ? `${one.name} ›` : "Money ›"}
+        </Link>
+      </div>
+      <div className="flex flex-col gap-2 rounded-[20px] bg-card px-4 py-3.5">
+        {rate ? (
+          <p className="flex flex-wrap items-baseline justify-between gap-x-3">
+            <span>
+              US$1 = <strong className="font-display text-[22px] font-semibold">{formatPeso(rate.rate)}</strong>
+            </span>
+            <span className="text-xs text-muted">
+              {rate.asOf === today ? "today's rate" : `rate as of ${formatShortDay(rate.asOf, today)}`} ·{" "}
+              <a href={rate.source.url} target="_blank" rel="noopener noreferrer" className="underline">
+                {rate.source.name}
+              </a>
+            </span>
+          </p>
+        ) : (
+          <p className="text-[13px] text-muted">
+            Couldn&apos;t get today&apos;s rate, so this uses the rate you set on your dollar wallet. It tries again in a few minutes.
+          </p>
+        )}
+        <p className="text-[15px]">
+          Your <strong>{formatMoney(total, "USD")}</strong> is worth ≈{" "}
+          <strong className="font-display text-[17px] font-semibold">{formatPeso(worth)}</strong>
+        </p>
+        {rate && (
+          <p className={`text-[15px] font-extrabold ${gain > 0 ? "text-sea-dark" : gain < 0 ? "text-coral-text" : "text-muted"}`}>
+            {gain > 0 ? "▲ " : gain < 0 ? "▼ " : ""}
+            {gain === 0 ? "No change" : `${gain > 0 ? "+" : "−"}${formatPeso(Math.abs(gain))}`}
+            <span className="font-semibold text-muted">
+              {one?.boughtAt
+                ? ` from the ${formatPeso(one.boughtAt)} per $1 you got`
+                : " from the rates you got"}
+            </span>
+          </p>
+        )}
+        {wallets.length > 1 && (
+          <ul className="flex flex-col border-t border-line-soft pt-1.5 text-[13px]">
+            {wallets.map((a) => (
+              <li key={a.id} className="flex justify-between gap-3 py-1">
+                <span className="truncate">{a.name}</span>
+                <span className="text-muted">
+                  {formatBalance(a)} ≈ {formatPeso(pesoValue(a))}
+                  {fxGain(a) !== 0 && ` (${fxGain(a) > 0 ? "+" : "−"}${formatPeso(Math.abs(fxGain(a)))})`}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </section>
   );
 }
 

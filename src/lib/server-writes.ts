@@ -12,14 +12,17 @@ export type Client = NonNullable<Awaited<ReturnType<typeof signedInClient>>>;
 /**
  * The wallet money comes from or lands in for a scheduled item: the one
  * saved with it if it's still in use, else your first cash, bank or e-wallet.
+ * With `chosen` (picked in Mark paid), that one or null if it isn't a wallet in use.
  */
-export async function pickWallet(supabase: Client, preferred: string | null): Promise<string | null> {
+export async function pickWallet(supabase: Client, preferred: string | null, chosen?: string): Promise<string | null> {
   const { data } = await supabase
     .from("accounts")
-    .select("id, type")
+    .select("*")
     .eq("archived", false)
     .order("created_at");
-  const wallets = (data ?? []).filter((a) => isSpendable(a.type as AccountType));
+  // Scheduled items are in pesos: never a dollar wallet ("*" works before migration 0017).
+  const wallets = (data ?? []).filter((a) => isSpendable(a.type as AccountType) && a.currency !== "USD");
+  if (chosen) return wallets.find((a) => a.id === chosen)?.id ?? null;
   return wallets.find((a) => a.id === preferred)?.id ?? wallets[0]?.id ?? null;
 }
 

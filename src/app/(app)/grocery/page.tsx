@@ -2,7 +2,7 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { getAccounts, getBudgets, getPriceMemory, getTransactions } from "@/lib/data";
 import { periodContaining, today as getToday } from "@/lib/dates";
-import { isSpendable, roundCents } from "@/lib/money";
+import { paysInPesos, roundCents } from "@/lib/money";
 import { GroceryMode } from "./grocery-mode";
 
 export const metadata = { title: "Grocery mode · Pong Money" };
@@ -37,7 +37,7 @@ async function Grocery() {
 
   return (
     <GroceryMode
-      wallets={accounts.filter((a) => isSpendable(a.type) || a.type === "credit_line")}
+      wallets={accounts.filter((a) => paysInPesos(a) || a.type === "credit_line")}
       groceriesLeft={budget ? Math.max(0, roundCents(budget.amount - used)) : null}
       groceriesBudget={budget?.amount ?? null}
       memory={memory}

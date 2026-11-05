@@ -41,7 +41,7 @@ async function Budgets({ searchParams }: Pick<PageProps<"/plan/budgets">, "searc
   ]);
   const spent = new Map<string, number>();
   for (const t of transactions) {
-    if (t.type !== "expense") continue;
+    if (t.type !== "expense" || t.category === "adjustment") continue;
     const key = t.category ?? "other";
     spent.set(key, roundCents((spent.get(key) ?? 0) + t.amount));
   }

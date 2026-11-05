@@ -23,11 +23,22 @@ import {
   prettyExpression,
   type Key,
 } from "@/lib/calculator";
-import { categoriesFor, categoryInfo } from "@/lib/categories";
+import { SUBCATEGORY_MAX, categoriesFor, categoryInfo, categoryLabel, cleanSubcategory } from "@/lib/categories";
 import type { Account, Template, Transaction } from "@/lib/data";
 import { clockOf, formatRelativeDay, formatShortDay, isValidDate } from "@/lib/dates";
 import { bnplFee, bnplFirstDue, buildSchedule } from "@/lib/installments";
-import { balanceEffect, formatPeso, isSpendable, parseAmount, roundCents, type TransactionType } from "@/lib/money";
+import {
+  balanceEffect,
+  currencySymbol,
+  formatMoney,
+  formatPeso,
+  isSpendable,
+  parseAmount,
+  paysInPesos,
+  roundCents,
+  type Currency,
+  type TransactionType,
+} from "@/lib/money";
 import { equalShares } from "@/lib/people";
 
 // Design canvas 2.2 (phone) and "Web · Add expense modal" (desktop).
@@ -42,19 +53,58 @@ const TYPES: { value: TransactionType; label: string }[] = [
 /** Someone in a split: a saved person, or a new name. */
 type Participant = { key: string; personId: string | null; name: string };
 
+/** A hint in the subcategory box, per category. */
+const SUBCATEGORY_EXAMPLES: Record<string, string> = {
+  food: "Merienda",
+  groceries: "Puregold",
+  transport: "Jeep",
+  bills: "Electricity",
+  load: "Globe",
+  shopping: "Clothes",
+  health: "Medicine",
+  family: "Allowance",
+  fun: "Movies",
+  gifts: "Birthday",
+  gov: "SSS",
+  salary: "13th month",
+  side_income: "Freelance",
+};
+
 /** BNPL plan lengths offered in Add; 1 is "pay next month". */
 const PLAN_MONTHS = [1, 3, 6, 12];
 
 /**
- * Which accounts each type can use: you spend from wallets or a BNPL credit
- * line, receive into wallets, and move money between any of your accounts.
+ * Which accounts each type can use: you spend from peso wallets or a BNPL
+ * credit line, receive into wallets (dollar ones too, for interest), and move
+ * money between any of your accounts.
  */
 function usableFor(type: TransactionType, accounts: Account[], keep: (string | null | undefined)[] = []) {
   return accounts.filter(
     (a) =>
       keep.includes(a.id) ||
-      (type === "transfer" ? true : type === "income" ? isSpendable(a.type) : isSpendable(a.type) || a.type === "credit_line"),
+      (type === "transfer" ? true : type === "income" ? isSpendable(a.type) : paysInPesos(a) || a.type === "credit_line"),
   );
+}
+
+/**
+ * Where money from `from` can go. Dollars only move between your own cash,
+ * banks and e-wallets: credit lines, loans and people are in pesos.
+ */
+function transferTargets(from: Account | undefined, accounts: Account[], keep: (string | null | undefined)[] = []) {
+  return usableFor("transfer", accounts, keep).filter(
+    (a) =>
+      a.id !== from?.id &&
+      (keep.includes(a.id) ||
+        ((from?.currency !== "USD" || isSpendable(a.type)) && (a.currency !== "USD" || !from || isSpendable(from.type)))),
+  );
+}
+
+/** What `amount` in `from`'s currency is in `to`'s, at the rate set on the dollar wallet. Null when they match. */
+function converted(amount: number, from: Account | undefined, to: Account | undefined): number | null {
+  if (!from || !to || from.currency === to.currency || !amount) return null;
+  const usd = from.currency === "USD" ? from : to;
+  if (!usd.fxRate) return null;
+  return roundCents(from.currency === "USD" ? amount * usd.fxRate : amount / usd.fxRate);
 }
 
 const TITLES: Record<TransactionType, string> = {
@@ -84,6 +134,7 @@ export function TransactionForm({
   prefill,
   people = [],
   startSplit = false,
+  subcategories = {},
 }: {
   accounts: Account[];
   templates: Template[];
@@ -98,14 +149,18 @@ export function TransactionForm({
   people?: { id: string; name: string }[];
   /** Open with Split on (from "Split a bill"). */
   startSplit?: boolean;
+  /** Subcategories typed before, by category key, most used first. */
+  subcategories?: Record<string, string[]>;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const editing = Boolean(transaction);
 
-  const prefillAccount = accounts.find((a) => a.id === prefill?.accountId)?.id;
-  const defaultFrom = prefillAccount ?? templates[0]?.accountId ?? accounts[0]?.id ?? "";
-  const [type, setType] = useState<TransactionType>(transaction?.type ?? prefill?.type ?? "expense");
+  const prefillAccount = accounts.find((a) => a.id === prefill?.accountId);
+  const defaultFrom = prefillAccount?.id ?? templates[0]?.accountId ?? accounts[0]?.id ?? "";
+  // A dollar wallet's + Add moves money: dollars aren't spent.
+  const startType = prefillAccount?.currency === "USD" && prefill?.type === "expense" ? "transfer" : prefill?.type;
+  const [type, setType] = useState<TransactionType>(transaction?.type ?? startType ?? "expense");
   const startAmount = transaction?.amount ?? prefill?.amount;
   const [calc, setCalc] = useState<{ expr: string; error: string | null }>({
     expr: startAmount ? amountToExpression(startAmount) : "",
@@ -117,10 +172,16 @@ export function TransactionForm({
     expense: transaction?.type === "expense" ? transaction.category : (prefillCategory("expense") ?? "food"),
     income: transaction?.type === "income" ? transaction.category : (prefillCategory("income") ?? "salary"),
   });
+  const [subcategory, setSubcategory] = useState<string | null>(transaction?.subcategory ?? null);
+  // Typed here but not saved yet, by category key.
+  const [addedSubs, setAddedSubs] = useState<Record<string, string[]>>({});
+  const [newSub, setNewSub] = useState("");
   const [accountId, setAccountId] = useState(transaction?.accountId ?? defaultFrom);
   const [toAccountId, setToAccountId] = useState(
-    transaction?.toAccountId ?? accounts.find((a) => a.id !== defaultFrom)?.id ?? "",
+    transaction?.toAccountId ?? transferTargets(accounts.find((a) => a.id === defaultFrom), accounts)[0]?.id ?? "",
   );
+  // Pesos to dollars or back: what landed, typed or worked out from the wallet's rate.
+  const [landed, setLanded] = useState(transaction?.toAmount ? String(transaction.toAmount) : "");
   const [date, setDate] = useState(transaction?.occurredOn ?? today);
   // New: now. Editing: the time picked, else when it was logged. Empty = no time.
   const [time, setTime] = useState(() =>
@@ -133,7 +194,7 @@ export function TransactionForm({
   const [planMonths, setPlanMonths] = useState(3);
   const [planRate, setPlanRate] = useState("0");
   const [planFirstDue, setPlanFirstDue] = useState<string | null>(null);
-  const [planPayFrom, setPlanPayFrom] = useState(accounts.find((a) => isSpendable(a.type))?.id ?? "");
+  const [planPayFrom, setPlanPayFrom] = useState(accounts.find((a) => paysInPesos(a))?.id ?? "");
   // Split a bill (design canvas row 5).
   const [splitOn, setSplitOn] = useState(startSplit && !transaction);
   const [participants, setParticipants] = useState<Participant[]>([]);
@@ -143,11 +204,19 @@ export function TransactionForm({
   const [exact, setExact] = useState<Record<string, string>>({});
 
   const category = type === "transfer" ? null : categories[type];
+  const sub = category ? subcategory : null;
+  const subOptions = category ? subcategoryChoices(category, subcategories, addedSubs, sub) : [];
   const value = evaluate(calc.expr);
   const amount = value && value > 0 ? value : 0;
   const account = accounts.find((a) => a.id === accountId);
   const toAccount = accounts.find((a) => a.id === toAccountId);
   const keep = [transaction?.accountId, transaction?.toAccountId];
+  // Amounts are in the paying wallet's currency.
+  const currency: Currency = account?.currency ?? "PHP";
+  const money = (v: number) => formatMoney(v, currency);
+  const crossing = type === "transfer" && !!account && !!toAccount && account.currency !== toAccount.currency;
+  const suggestedLanded = crossing ? converted(amount, account, toAccount) : null;
+  const toAmount = !crossing ? null : landed.trim() ? parseAmount(landed) : suggestedLanded;
   const splitting = splitOn && type === "expense" && !editing;
   const fromList = usableFor(type, accounts, keep);
   // A split you paid with a credit line goes on its bill too, for the whole amount.
@@ -181,19 +250,30 @@ export function TransactionForm({
 
   function pickType(next: TransactionType) {
     setType(next);
+    setSubcategory(null);
     setSaveError(null);
     const list = usableFor(next, accounts, keep);
     const from = list.some((a) => a.id === accountId) ? accountId : (list[0]?.id ?? "");
     setAccountId(from);
-    if (next === "transfer" && toAccountId === from) {
-      setToAccountId(accounts.find((a) => a.id !== from)?.id ?? "");
-    }
+    if (next === "transfer") keepTarget(from);
+  }
+
+  /** Keeps To on a wallet `from` can send to. */
+  function keepTarget(from: string) {
+    const targets = transferTargets(accounts.find((a) => a.id === from), accounts, keep);
+    if (!targets.some((a) => a.id === toAccountId)) setToAccountId(targets[0]?.id ?? "");
+  }
+
+  function pickTo(id: string) {
+    setToAccountId(id);
+    setLanded("");
   }
 
   function pickFrom(id: string) {
     setAccountId(id);
     setPlanFirstDue(null);
-    if (id === toAccountId) setToAccountId(accounts.find((a) => a.id !== id)?.id ?? "");
+    setLanded("");
+    keepTarget(id);
   }
 
   function applyTemplate(t: Template) {
@@ -202,6 +282,7 @@ export function TransactionForm({
     if (t.type !== "transfer" && t.category) {
       setCategories((c) => ({ ...c, [t.type]: t.category }));
     }
+    setSubcategory(t.subcategory);
     setAccountId(t.accountId);
     if (t.toAccountId) setToAccountId(t.toAccountId);
     setNote(t.note ?? "");
@@ -219,7 +300,11 @@ export function TransactionForm({
       return;
     }
     if (!amount) {
-      setSaveError("Enter an amount above ₱0.");
+      setSaveError(`Enter an amount above ${currencySymbol(currency)}0.`);
+      return;
+    }
+    if (crossing && !(toAmount !== null && toAmount > 0)) {
+      setSaveError(`Type how much landed in ${toAccount!.name}, in ${toAccount!.currency === "USD" ? "dollars" : "pesos"}.`);
       return;
     }
     if (splitting) {
@@ -241,6 +326,7 @@ export function TransactionForm({
         const result = await saveSplit({
           total: amount,
           category: category ?? "other",
+          subcategory: sub,
           note,
           occurredOn: date,
           paidBy: payer ? whoOf(payer) : null,
@@ -264,14 +350,16 @@ export function TransactionForm({
         amount,
         accountId,
         toAccountId: type === "transfer" ? toAccountId : null,
+        toAmount: crossing ? toAmount : null,
         category,
+        subcategory: sub,
         note,
         occurredOn: date,
         occurredTime: time || null,
       };
       if (withPlan) {
         const result = await saveBnplPurchase(
-          { ...input, note: note.trim() || categoryInfo("expense", category).label },
+          { ...input, note: note.trim() || sub || categoryInfo("expense", category).label },
           { months: planMonths, ratePerMonth: rate, firstDue, payFromAccountId: planPayFrom || null },
         );
         if (result.error) setSaveError(result.error);
@@ -348,7 +436,7 @@ export function TransactionForm({
 
   const pong = splitting
     ? splitPong(amount, shares, participants, paidBy)
-    : pongSays({ type, amount, error: calc.error, account, toAccount, transaction, planRows });
+    : pongSays({ type, amount, error: calc.error, account, toAccount, toAmount, transaction, planRows });
   const payer = splitting ? participants.find((p) => p.key === paidBy) : undefined;
 
   function toggleSplit(on: boolean) {
@@ -359,6 +447,22 @@ export function TransactionForm({
   function toggleParticipant(p: Participant) {
     setParticipants((list) => (list.some((x) => x.key === p.key) ? list.filter((x) => x.key !== p.key) : [...list, p]));
     if (paidBy === p.key) setPaidBy(null);
+  }
+
+  function pickCategory(key: string) {
+    if (key !== category) setSubcategory(null);
+    setCategories((cs) => ({ ...cs, [type]: key }));
+  }
+
+  /** Picks what's typed in the subcategory box, adding it to the chips if it's new. */
+  function addSubcategory() {
+    const name = cleanSubcategory(newSub)?.slice(0, SUBCATEGORY_MAX);
+    if (!name || !category) return;
+    const existing = subOptions.find((o) => o.toLowerCase() === name.toLowerCase());
+    if (!existing) setAddedSubs((a) => ({ ...a, [category]: [...(a[category] ?? []), name] }));
+    setSubcategory(existing ?? name);
+    setNewSub("");
+    setSaveError(null);
   }
 
   function addNewName() {
@@ -376,8 +480,8 @@ export function TransactionForm({
       ? "Enter an amount"
       : splitting
         ? `Split ${formatPeso(amount)}`
-        : `${editing ? "Save" : "Enter"} ${formatPeso(amount)}`;
-  const transferWallets = usableFor("transfer", accounts, keep).filter((a) => a.id !== accountId);
+        : `${editing ? "Save" : "Enter"} ${money(amount)}`;
+  const transferWallets = transferTargets(account, accounts, keep);
 
   const typePicker = (className: string) => (
     <div role="group" aria-label="Type" className={`gap-1 rounded-2xl bg-card p-1 ${className}`}>
@@ -438,7 +542,7 @@ export function TransactionForm({
             {hasOperator(calc.expr) ? prettyExpression(calc.expr) : " "}
           </span>
           <span className="font-display text-[52px] leading-[1.05] font-semibold">
-            {formatPeso(Math.max(0, value ?? 0))}
+            {money(Math.max(0, value ?? 0))}
           </span>
           <span
             className={`min-h-5 text-sm font-bold ${
@@ -451,7 +555,7 @@ export function TransactionForm({
           >
             {calc.error ??
               (leftToSplit === null || !amount
-                ? summary({ type, category, account, toAccount, date, today })
+                ? summary({ type, category, subcategory: sub, account, toAccount, date, today })
                 : splitLeftLabel(leftToSplit))}
           </span>
         </div>
@@ -512,7 +616,7 @@ export function TransactionForm({
                   key={c.key}
                   type="button"
                   aria-pressed={category === c.key}
-                  onClick={() => setCategories((cs) => ({ ...cs, [type]: c.key }))}
+                  onClick={() => pickCategory(c.key)}
                   className={`flex w-[68px] shrink-0 flex-col items-center gap-1 rounded-2xl border-[2.5px] bg-card px-1 py-1.5 text-xs font-extrabold lg:w-auto ${
                     category === c.key ? "border-sea" : "border-transparent"
                   }`}
@@ -524,6 +628,55 @@ export function TransactionForm({
                 </button>
               ))}
             </div>
+            {category && (
+              <div className="flex flex-col gap-1.5">
+                <span id="subcategory-label" className="text-[13px] font-extrabold text-muted">
+                  {categoryInfo(type, category).label.toUpperCase()} · SUBCATEGORY (OPTIONAL)
+                </span>
+                {subOptions.length > 0 && (
+                  <div role="group" aria-labelledby="subcategory-label" className="-mx-5 flex gap-2 overflow-x-auto px-5 pb-1 lg:mx-0 lg:flex-wrap lg:px-0">
+                    {subOptions.map((name) => (
+                      <button
+                        key={name}
+                        type="button"
+                        aria-pressed={sub === name}
+                        onClick={() => setSubcategory(sub === name ? null : name)}
+                        className={`h-8 shrink-0 rounded-full px-3 text-[13px] font-extrabold ${
+                          sub === name ? "bg-ink text-mint" : "bg-card text-ink hover:bg-sea-tint"
+                        }`}
+                      >
+                        {name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <label htmlFor="subcategory-new" className="sr-only">New subcategory</label>
+                  <input
+                    id="subcategory-new"
+                    value={newSub}
+                    onChange={(e) => setNewSub(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addSubcategory();
+                      }
+                    }}
+                    maxLength={SUBCATEGORY_MAX}
+                    placeholder={`New subcategory${SUBCATEGORY_EXAMPLES[category] ? `, like ${SUBCATEGORY_EXAMPLES[category]}` : ""}`}
+                    className="h-10 min-w-0 flex-1 rounded-[14px] bg-card px-3 text-[15px] outline-none focus:ring-2 focus:ring-sea"
+                  />
+                  <button
+                    type="button"
+                    onClick={addSubcategory}
+                    disabled={!newSub.trim()}
+                    className="h-10 rounded-[14px] bg-card px-3.5 text-sm font-extrabold disabled:opacity-50"
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
+            )}
             {category === "groceries" && !editing && (
               <Link href="/grocery" className="text-[13px] font-extrabold text-sea-dark underline">
                 At the store now? Scan as you shop in Grocery mode
@@ -714,7 +867,7 @@ export function TransactionForm({
                   onChange={(e) => setPlanPayFrom(e.target.value)}
                   className="h-11 min-w-0 rounded-[14px] bg-mint px-2 text-[15px] outline-none focus:ring-2 focus:ring-sea"
                 >
-                  {accounts.filter((a) => isSpendable(a.type)).map((a) => (
+                  {accounts.filter((a) => paysInPesos(a)).map((a) => (
                     <option key={a.id} value={a.id}>{a.name}</option>
                   ))}
                 </select>
@@ -736,11 +889,43 @@ export function TransactionForm({
           <div className="order-7 flex flex-col gap-1.5 lg:order-none">
             <span className="text-sm font-extrabold">To</span>
             {transferWallets.length ? (
-              walletChips(toAccountId, setToAccountId, transferWallets, "To")
+              walletChips(toAccountId, pickTo, transferWallets, "To")
             ) : (
               <p className="text-sm text-muted">
                 Add a second wallet in <Link href="/money" className="font-extrabold text-sea-dark underline">Money</Link> to move money between them.
               </p>
+            )}
+            {crossing && toAccount && (
+              <div className="mt-1 flex flex-col gap-1">
+                <label htmlFor="txn-landed" className="text-[13px] font-extrabold">
+                  Landed in {toAccount.name}
+                </label>
+                <div className="relative w-48">
+                  <span aria-hidden="true" className="absolute top-1/2 left-3 -translate-y-1/2 font-bold text-muted">
+                    {currencySymbol(toAccount.currency)}
+                  </span>
+                  <input
+                    id="txn-landed"
+                    value={landed}
+                    onChange={(e) => {
+                      setLanded(e.target.value);
+                      setSaveError(null);
+                    }}
+                    inputMode="decimal"
+                    placeholder={suggestedLanded ? String(suggestedLanded) : "0.00"}
+                    className="h-11 w-full rounded-[14px] bg-card pr-3 pl-8 text-right text-[15px] outline-none focus:ring-2 focus:ring-sea"
+                  />
+                </div>
+                <span className="text-xs text-muted">
+                  {landed.trim()
+                    ? "What the bank's app says landed."
+                    : suggestedLanded
+                      ? `≈ ${formatMoney(suggestedLanded, toAccount.currency)} at the rate on ${
+                          account?.currency === "USD" ? account.name : toAccount.name
+                        }. Type what the bank's app says if it's different.`
+                      : "Type what the bank's app says landed."}
+                </span>
+              </div>
             )}
             <p className="text-xs text-muted">Moving money between your own wallets is never counted as spending.</p>
           </div>
@@ -881,9 +1066,24 @@ function splitPong(
   return { mood: "happy", line: `Your share is ${formatPeso(shares.mine)}. ${formatPeso(owed)} becomes pautang, still your money.` };
 }
 
+/** Saved subcategories for `category`, then ones typed here, then the picked one if it's in neither. */
+function subcategoryChoices(
+  category: string,
+  saved: Record<string, string[]>,
+  added: Record<string, string[]>,
+  picked: string | null,
+): string[] {
+  const list: string[] = [];
+  for (const name of [...(saved[category] ?? []), ...(added[category] ?? []), ...(picked ? [picked] : [])]) {
+    if (!list.some((n) => n.toLowerCase() === name.toLowerCase())) list.push(name);
+  }
+  return list;
+}
+
 function summary({
   type,
   category,
+  subcategory,
   account,
   toAccount,
   date,
@@ -891,6 +1091,7 @@ function summary({
 }: {
   type: TransactionType;
   category: string | null;
+  subcategory: string | null;
   account?: Account;
   toAccount?: Account;
   date: string;
@@ -900,14 +1101,15 @@ function summary({
   if (type === "transfer") {
     return `${account?.name ?? "?"} → ${toAccount?.name ?? "?"} · ${when}`;
   }
-  return `${categoryInfo(type, category).label} · ${account?.name ?? ""} · ${when}`;
+  return `${categoryLabel(type, category, subcategory)} · ${account?.name ?? ""} · ${when}`;
 }
 
 function templateLabel(t: Template, accounts: Account[]) {
   const name = (id: string | null) => accounts.find((a) => a.id === id)?.name ?? "";
-  if (t.type === "transfer") return `${name(t.accountId)} → ${name(t.toAccountId)} · ${formatPeso(t.amount)}`;
-  const what = t.note || categoryInfo(t.type, t.category).label;
-  return `${what} · ${formatPeso(t.amount)} · ${name(t.accountId)}`;
+  const amount = formatMoney(t.amount, accounts.find((a) => a.id === t.accountId)?.currency);
+  if (t.type === "transfer") return `${name(t.accountId)} → ${name(t.toAccountId)} · ${amount}`;
+  const what = t.note || t.subcategory || categoryInfo(t.type, t.category).label;
+  return `${what} · ${amount} · ${name(t.accountId)}`;
 }
 
 /** What Pong says while you type: how the wallet balance changes. */
@@ -917,6 +1119,7 @@ function pongSays({
   error,
   account,
   toAccount,
+  toAmount,
   transaction,
   planRows,
 }: {
@@ -925,10 +1128,14 @@ function pongSays({
   error: string | null;
   account?: Account;
   toAccount?: Account;
+  /** Pesos to dollars or back: what lands in toAccount. */
+  toAmount: number | null;
   transaction?: Transaction;
   planRows: { amount: number }[];
 }): { mood: PongMood; line: string } {
   if (error) return { mood: "worried", line: `${error}. Check the numbers?` };
+  // Each wallet in its own currency.
+  const formatPeso = (v: number, a: Account | undefined = account) => formatMoney(v, a?.currency);
 
   // When editing, the balance already includes the original transaction.
   const before = (a: Account) => a.balance - (transaction ? balanceEffect(transaction, a.id) : 0);
@@ -962,7 +1169,7 @@ function pongSays({
     if (!toAccount) return { mood: "ask", line: "Where is the money going?" };
     return {
       mood: "listen",
-      line: `${account.name} will have ${formatPeso(left)}, ${toAccount.name} ${formatPeso(before(toAccount) + amount)}. Not spending.`,
+      line: `${account.name} will have ${formatPeso(left)}, ${toAccount.name} ${formatPeso(before(toAccount) + (toAmount ?? amount), toAccount)}. Not spending.`,
     };
   }
   if (left < 0) {

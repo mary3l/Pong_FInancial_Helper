@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
+import { AdjustmentEditor } from "@/components/adjust-balance";
 import { AddTransactionSkeleton } from "@/components/add-transaction";
 import { TransactionForm } from "@/components/transaction-form";
-import { getAccounts, getTransaction } from "@/lib/data";
+import { isAdjustment } from "@/lib/categories";
+import { getAccounts, getSubcategories, getTransaction } from "@/lib/data";
 import { today } from "@/lib/dates";
 
 export const metadata = { title: "Edit · Pong Money" };
@@ -19,11 +21,23 @@ export default function EditTransactionPage({ params }: PageProps<"/activity/[id
 
 async function EditTransaction({ params }: Pick<PageProps<"/activity/[id]">, "params">) {
   const { id } = await params;
-  const [transaction, accounts] = await Promise.all([
+  const [transaction, accounts, subcategories] = await Promise.all([
     getTransaction(id),
     getAccounts({ includeArchived: true, includePeople: true }),
+    getSubcategories(),
   ]);
   if (!transaction) notFound();
+
+  if (isAdjustment(transaction)) {
+    return (
+      <AdjustmentEditor
+        transaction={transaction}
+        walletName={accounts.find((a) => a.id === transaction.accountId)?.name ?? "Removed wallet"}
+        closeHref={`/money/${transaction.accountId}?p=${transaction.occurredOn}`}
+        today={today()}
+      />
+    );
+  }
 
   // Archived wallets and people stay hidden unless this transaction used one.
   const used = (a: { id: string }) => a.id === transaction.accountId || a.id === transaction.toAccountId;
@@ -34,6 +48,7 @@ async function EditTransaction({ params }: Pick<PageProps<"/activity/[id]">, "pa
       accounts={usable}
       templates={[]}
       transaction={transaction}
+      subcategories={subcategories}
       today={today()}
       mode="page"
       closeHref={transaction.splitId ? `/activity/split/${transaction.splitId}` : `/activity?p=${transaction.occurredOn}`}
