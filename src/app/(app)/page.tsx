@@ -9,7 +9,7 @@ import { ThemeToggle } from "@/components/theme";
 import { TransactionList } from "@/components/transaction-list";
 import { getCurrentUser } from "@/lib/auth";
 import { categoryInfo } from "@/lib/categories";
-import { getBudgets, getPlanInputs, getTransactions, type Account, type Budget } from "@/lib/data";
+import { getBudgets, getPlanInputs, getTransactions, withoutArchived, type Account, type Budget } from "@/lib/data";
 import {
   addDays,
   formatLongDay,
@@ -81,7 +81,8 @@ async function Dashboard() {
   const period = periodContaining(today);
   const [{ accounts, inWallets, setAside, payday, items, people }, recent, budgets, spentThisKinsenas] = await Promise.all([
     getPlanInputs(today, 30),
-    getTransactions({ limit: 6 }),
+    // Extra rows so six are left after archived activity drops out.
+    getTransactions({ limit: 30 }).then(withoutArchived).then((t) => t.slice(0, 6)),
     getBudgets(),
     getTransactions({ from: period.start, to: period.end }),
   ]);

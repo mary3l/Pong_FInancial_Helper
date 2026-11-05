@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { ChevronIcon } from "@/components/icons";
 import { Pong } from "@/components/pong";
 import { TransactionList } from "@/components/transaction-list";
-import { getAccounts, getTransactions } from "@/lib/data";
+import { getAccounts, getTransactions, withoutArchived } from "@/lib/data";
 import {
   formatPeriod,
   isValidDate,
@@ -39,7 +39,7 @@ async function Activity({ searchParams }: Pick<PageProps<"/activity">, "searchPa
 
   const [accounts, transactions] = await Promise.all([
     getAccounts({ includeArchived: true, includePeople: true }),
-    getTransactions({ from: period.start, to: period.end, search: q }),
+    getTransactions({ from: period.start, to: period.end, search: q }).then(withoutArchived),
   ]);
   const totals = cashflow(transactions);
 

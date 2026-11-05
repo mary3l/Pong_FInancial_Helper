@@ -445,6 +445,47 @@ export async function getInstallmentPlans(accountId?: string): Promise<Installme
   }));
 }
 
+/**
+ * Drops the activity of archived wallets, credit lines and loans: anything
+ * moving money in or out of one, and the fees paid on its installments
+ * (those sit on the wallet that paid them). Archived people keep theirs.
+ * Balances and the account's own page still count all of it.
+ */
+export async function withoutArchived(transactions: Transaction[]): Promise<Transaction[]> {
+  if (!transactions.length) return transactions;
+  const supabase = await db();
+  const { data: archived, error } = await supabase
+    .from("accounts")
+    .select("id")
+    .eq("archived", true)
+    .neq("type", "person");
+  if (error) throw dbError(error);
+  if (!archived.length) return transactions;
+  const accountIds = new Set(archived.map((a) => a.id as string));
+
+  const { data: plans, error: planError } = await supabase
+    .from("installment_plans")
+    .select("id")
+    .in("account_id", [...accountIds]);
+  if (planError) throw dbError(planError);
+  const hidden = new Set<string>();
+  if (plans.length) {
+    const { data: payments, error: paymentError } = await supabase
+      .from("scheduled_payments")
+      .select("transfer_txn_id, fee_txn_id")
+      .in("plan_id", plans.map((p) => p.id as string));
+    if (paymentError) throw dbError(paymentError);
+    for (const p of payments) {
+      if (p.transfer_txn_id) hidden.add(p.transfer_txn_id);
+      if (p.fee_txn_id) hidden.add(p.fee_txn_id);
+    }
+  }
+  return transactions.filter(
+    (t) =>
+      !hidden.has(t.id) && !accountIds.has(t.accountId) && !(t.toAccountId && accountIds.has(t.toAccountId)),
+  );
+}
+
 /** Installments as forecast inputs: "Running shoes (2 of 3)". */
 export function installmentInputs(plans: InstallmentPlan[]): NonNullable<ScheduleInputs["installments"]> {
   return plans.flatMap((plan) =>
