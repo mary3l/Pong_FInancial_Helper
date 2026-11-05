@@ -363,7 +363,7 @@ export function TransactionForm({
       ? "Enter an amount"
       : splitting
         ? `Split ${formatPeso(amount)}`
-        : `Save ${formatPeso(amount)}`;
+        : `${editing ? "Save" : "Enter"} ${formatPeso(amount)}`;
   const transferWallets = usableFor("transfer", accounts, keep).filter((a) => a.id !== accountId);
 
   const typePicker = (className: string) => (
