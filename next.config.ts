@@ -7,6 +7,12 @@ const nextConfig: NextConfig = {
     // Navigations and Server Actions wait and retry when the signal drops
     // (inside the grocery store, say) instead of failing. See OfflineBanner.
     useOffline: true,
+    // Keep pages you've visited in the browser for 5 minutes, so going back to
+    // a tab shows it at once instead of asking Supabase again. Every save
+    // calls refresh(), which clears this, so balances never go stale after a
+    // change made here. A change from another device shows within 5 minutes,
+    // or on a reload.
+    staleTimes: { dynamic: 300 },
   },
   turbopack: {
     rules: {

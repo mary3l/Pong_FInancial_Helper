@@ -1,5 +1,6 @@
 import "server-only";
 import { connection } from "next/server";
+import { cache } from "react";
 import { subcategoryOptions } from "@/lib/categories";
 import { addDays } from "@/lib/dates";
 import { scheduledItems, sortItems, type ForecastItem, type ScheduleInputs } from "@/lib/forecast";
@@ -165,17 +166,24 @@ function dbError(error: { code?: string; message: string }) {
   return new Error(`Supabase ${error.code ?? "error"}: ${error.message}`, { cause: error });
 }
 
-async function db() {
+// One client per request, shared by every read in it.
+const db = cache(async () => {
   // Supabase checks token expiry with Date.now(); see lib/auth.ts.
   await connection();
   return createClient();
-}
+});
 
 /**
  * Wallets, credit lines and loans. People (utang and pautang) are accounts
  * too, but only come back with `includePeople`: see getPeople.
  */
 export async function getAccounts({ includeArchived = false, includePeople = false } = {}): Promise<Account[]> {
+  // Home, Plan and the Add sheet over them each ask for accounts; read once
+  // per request. cache() compares arguments by identity, so pass plain flags.
+  return readAccounts(includeArchived, includePeople);
+}
+
+const readAccounts = cache(async (includeArchived: boolean, includePeople: boolean): Promise<Account[]> => {
   const supabase = await db();
   const select = (columns: string) => {
     let query = supabase.from("accounts").select(columns).order("created_at");
@@ -229,7 +237,7 @@ export async function getAccounts({ includeArchived = false, includePeople = fal
     ...dollarRates(a, today),
     maturesOn: a.matures_on ?? null,
   }));
-}
+});
 
 /** A USD wallet's rates: worth now (today's, else yours) and what you got. */
 function dollarRates(a: AccountRow, today: UsdRate | null) {
@@ -591,6 +599,11 @@ export function installmentInputs(plans: InstallmentPlan[]): NonNullable<Schedul
 
 /** Everyone with utang or pautang, with their entries. */
 export async function getPeople({ includeArchived = false } = {}): Promise<Person[]> {
+  return readPeople(includeArchived);
+}
+
+// Once per request, like readAccounts.
+const readPeople = cache(async (includeArchived: boolean): Promise<Person[]> => {
   const supabase = await db();
   let accounts = supabase
     .from("accounts")
@@ -627,7 +640,7 @@ export async function getPeople({ includeArchived = false } = {}): Promise<Perso
         splitTotal: row.split_total === null ? null : Number(row.split_total),
       })),
   }));
-}
+});
 
 /**
  * When the home screen widget key was made, or null when there's none.
