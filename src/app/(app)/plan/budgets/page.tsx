@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import { Suspense } from "react";
 import { categoryInfo } from "@/lib/categories";
 import { getBudgets, getTransactions } from "@/lib/data";
@@ -31,6 +32,8 @@ export default function BudgetsPage({ searchParams }: PageProps<"/plan/budgets">
 async function Budgets({ searchParams }: Pick<PageProps<"/plan/budgets">, "searchParams">) {
   const params = await searchParams;
   const view = params.view === "month" ? "month" : "kinsenas";
+  // Read the clock only at request time (Cache Components).
+  await connection();
   const today = getToday();
   const period = view === "month" ? monthContaining(today) : periodContaining(today);
   const times = view === "month" ? 2 : 1;

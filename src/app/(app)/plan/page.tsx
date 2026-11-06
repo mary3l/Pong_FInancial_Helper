@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { connection } from "next/server";
 import { Suspense } from "react";
 import { ForecastChart } from "@/components/forecast-chart";
 import { Pong, type PongMood } from "@/components/pong";
@@ -32,6 +33,8 @@ export default function ForecastPage({ searchParams }: PageProps<"/plan">) {
 async function Forecast({ searchParams }: Pick<PageProps<"/plan">, "searchParams">) {
   const params = await searchParams;
   const days = RANGES.find((r) => String(r) === params.days) ?? 30;
+  // Read the clock only at request time (Cache Components).
+  await connection();
   const today = getToday();
   const { accounts, inWallets, payday, items } = await getPlanInputs(today, days);
 

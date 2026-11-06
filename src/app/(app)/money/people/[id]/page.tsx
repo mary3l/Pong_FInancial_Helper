@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { connection } from "next/server";
 import { Suspense } from "react";
 import { getCurrentUser } from "@/lib/auth";
 import { getAccounts, getPeople, getTransactions } from "@/lib/data";
@@ -35,6 +36,8 @@ const KIND_LABELS: Record<PersonEntry["kind"], string> = {
 async function PersonDetail({ params }: Pick<PageProps<"/money/people/[id]">, "params">) {
   const { id } = await params;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
+  // Read the clock only at request time (Cache Components).
+  await connection();
   const today = getToday();
   const [people, accounts, history, user] = await Promise.all([
     getPeople({ includeArchived: true }),

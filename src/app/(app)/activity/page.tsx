@@ -1,5 +1,6 @@
 import Form from "next/form";
 import Link from "next/link";
+import { connection } from "next/server";
 import { Suspense } from "react";
 import { ChevronIcon } from "@/components/icons";
 import { Pong } from "@/components/pong";
@@ -31,6 +32,8 @@ export default function ActivityPage({ searchParams }: PageProps<"/activity">) {
 
 async function Activity({ searchParams }: Pick<PageProps<"/activity">, "searchParams">) {
   const params = await searchParams;
+  // Read the clock only at request time (Cache Components).
+  await connection();
   const today = getToday();
   const p = typeof params.p === "string" && isValidDate(params.p) ? params.p : today;
   const q = typeof params.q === "string" ? params.q.trim().slice(0, 60) : "";
