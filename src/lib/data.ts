@@ -330,6 +330,35 @@ export async function getBillPayments(from: string): Promise<BillPayment[]> {
   }));
 }
 
+/**
+ * Which of these transactions paid a bill, a planned item or an installment.
+ * Those were already counted in Safe to spend as "due before payday", so
+ * they aren't counted again as spending.
+ */
+export async function getScheduledTransactionIds(ids: string[]): Promise<Set<string>> {
+  if (!ids.length) return new Set();
+  const supabase = await db();
+  const list = ids.join(",");
+  const [bills, planned, payments] = await Promise.all([
+    supabase.from("bill_payments").select("transaction_id").in("transaction_id", ids),
+    supabase.from("planned_expenses").select("transaction_id").in("transaction_id", ids),
+    supabase
+      .from("scheduled_payments")
+      .select("transfer_txn_id, fee_txn_id")
+      .or(`transfer_txn_id.in.(${list}),fee_txn_id.in.(${list})`),
+  ]);
+  if (bills.error) throw dbError(bills.error);
+  if (planned.error) throw dbError(planned.error);
+  if (payments.error) throw dbError(payments.error);
+  return new Set(
+    [
+      ...bills.data.map((r) => r.transaction_id),
+      ...planned.data.map((r) => r.transaction_id),
+      ...payments.data.flatMap((r) => [r.transfer_txn_id, r.fee_txn_id]),
+    ].filter((id): id is string => Boolean(id)),
+  );
+}
+
 /** Planned items due on or after `from`, plus any still unlogged from before. */
 export async function getPlannedExpenses(from: string): Promise<PlannedExpense[]> {
   const supabase = await db();

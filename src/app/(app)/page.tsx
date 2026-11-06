@@ -9,7 +9,16 @@ import { ThemeToggle } from "@/components/theme";
 import { TransactionList } from "@/components/transaction-list";
 import { getCurrentUser } from "@/lib/auth";
 import { categoryInfo } from "@/lib/categories";
-import { getBudgets, getPlanInputs, getTransactions, withoutArchived, type Account, type Budget } from "@/lib/data";
+import {
+  getBudgets,
+  getPlanInputs,
+  getScheduledTransactionIds,
+  getTransactions,
+  withoutArchived,
+  type Account,
+  type Budget,
+  type Transaction,
+} from "@/lib/data";
 import {
   addDays,
   formatLongDay,
@@ -22,6 +31,7 @@ import { itemLabel, project, safeToSpend, type ForecastItem, type SafeToSpend } 
 import { getUsdRate } from "@/lib/fx";
 import {
   accountTypeLabel,
+  countsAsSpending,
   formatBalance,
   formatMoney,
   formatPeso,
@@ -37,7 +47,7 @@ import { dueDate, isOverdue } from "@/lib/people";
 
 // Design canvas 2.1: Safe to spend (with its breakdown), Coming up (bills and
 // expenses with Mark paid, pay and income with Add income), the next 30 days,
-// wallet balances and recent activity.
+// wallet balances and today's activity.
 export default function HomePage() {
   return (
     <div className="flex flex-col gap-5">
@@ -92,14 +102,14 @@ async function Dashboard() {
   await connection();
   const today = getToday();
   const period = periodContaining(today);
-  const [{ accounts, inWallets, setAside, payday, items, people }, recent, budgets, spentThisKinsenas] = await Promise.all([
+  const [{ accounts, inWallets, setAside, payday, items, people }, todays, budgets, spentThisKinsenas] = await Promise.all([
     getPlanInputs(today, 30),
-    // Extra rows so six are left after archived activity drops out.
-    getTransactions({ limit: 30 }).then(withoutArchived).then((t) => t.slice(0, 6)),
+    getTransactions({ from: today, to: today }),
     getBudgets(),
     getTransactions({ from: period.start, to: period.end }),
   ]);
-  const sts = safeToSpend({ inWallets, payday, items, today });
+  const [activity, spentToday] = await Promise.all([withoutArchived(todays), spendingToday(todays, accounts)]);
+  const sts = safeToSpend({ inWallets, payday, items, today, spentToday });
   const forecast = project(inWallets, items, today, 30);
   const pong = pongSays(sts, accounts.length > 0, today);
   // Everything scheduled in the next 7 days, plus late planned items.
@@ -239,17 +249,17 @@ async function Dashboard() {
 
         <BudgetsCard budgets={budgets} spent={spentThisKinsenas} />
 
-        <section aria-labelledby="recent-heading" className="flex flex-col gap-2.5">
+        <section aria-labelledby="today-heading" className="flex flex-col gap-2.5">
           <div className="flex items-baseline justify-between">
-            <h2 id="recent-heading" className="font-display text-xl font-semibold">Recent activity</h2>
+            <h2 id="today-heading" className="font-display text-xl font-semibold">Today</h2>
             <Link href="/activity" className="text-sm font-extrabold text-sea">See all ›</Link>
           </div>
           <div className="rounded-[20px] bg-card px-4 py-1.5">
-            {recent.length ? (
-              <TransactionList transactions={recent} accounts={accounts} today={today} grouped={false} />
+            {activity.length ? (
+              <TransactionList transactions={activity} accounts={accounts} today={today} grouped={false} />
             ) : (
               <p className="py-3 text-[15px] text-muted">
-                Nothing logged yet. Tap <strong className="text-ink">+</strong> to add your first expense.
+                Nothing logged today. Tap <strong className="text-ink">+</strong> to add an expense.
               </p>
             )}
           </div>
@@ -259,6 +269,18 @@ async function Dashboard() {
       </div>
     </div>
   );
+}
+
+/**
+ * What today's expenses took out of spending wallets. Bills, planned items
+ * and installments you paid today don't count: Safe to spend already set
+ * that money aside as "due before payday".
+ */
+async function spendingToday(todays: Transaction[], accounts: Account[]): Promise<number> {
+  const spending = new Set(accounts.filter((a) => countsAsSpending(a)).map((a) => a.id));
+  const expenses = todays.filter((t) => t.type === "expense" && spending.has(t.accountId));
+  const scheduled = await getScheduledTransactionIds(expenses.map((t) => t.id));
+  return roundCents(expenses.filter((t) => !scheduled.has(t.id)).reduce((sum, t) => sum + t.amount, 0));
 }
 
 /** Desktop dashboard: budgets this kinsenas at a glance (design "Web · Dashboard"). */
@@ -405,11 +427,18 @@ function SafeToSpendCard({ sts, setAside, today }: { sts: SafeToSpend; setAside:
         {hasPayday ? "SAFE TO SPEND TODAY" : "IN YOUR WALLETS"}
       </h2>
       <p className="relative font-display text-5xl leading-none font-semibold lg:text-6xl">
-        {formatPeso(hasPayday ? sts.perDay! : sts.inWallets)}
+        {formatPeso(hasPayday ? sts.leftToday! : sts.inWallets)}
       </p>
+      {hasPayday && sts.spentToday > 0 && (
+        <p className="relative text-[15px] font-extrabold">
+          {sts.leftToday! < 0
+            ? `Over by ${formatPeso(-sts.leftToday!)}: spent ${formatPeso(sts.spentToday)} of ${formatPeso(sts.perDay!)} today`
+            : `Spent ${formatPeso(sts.spentToday)} of today's ${formatPeso(sts.perDay!)}`}
+        </p>
+      )}
       <p className="relative text-[15px] text-sea-text">
         {hasPayday
-          ? `a day until payday on ${formatShortDay(sts.nextPayday!, today)} · ${sts.daysLeft} ${sts.daysLeft === 1 ? "day" : "days"} left`
+          ? `${formatPeso(sts.perDay!)} a day until payday on ${formatShortDay(sts.nextPayday!, today)} · ${sts.daysLeft} ${sts.daysLeft === 1 ? "day" : "days"} left`
           : "Set your payday to see a daily amount."}
       </p>
       {hasPayday && (
@@ -419,7 +448,10 @@ function SafeToSpendCard({ sts, setAside, today }: { sts: SafeToSpend; setAside:
             <span className="hidden group-open:inline">Hide breakdown</span>
           </summary>
           <dl className="flex flex-col gap-1.5 rounded-[18px] bg-sea-deep px-4 py-3.5 text-[15px]">
-            <BreakdownLine label="Spending money in your wallets" value={formatPeso(sts.inWallets)} />
+            <BreakdownLine
+              label={sts.spentToday > 0 ? "Spending money in your wallets this morning" : "Spending money in your wallets"}
+              value={formatPeso(roundCents(sts.inWallets + sts.spentToday))}
+            />
             <BreakdownLine label={`− Due before payday (${sts.dueCount})`} value={formatPeso(sts.dueBeforePayday)} />
             <BreakdownLine
               label={`= Free until ${formatShortDay(sts.nextPayday!, today)}`}
@@ -432,13 +464,16 @@ function SafeToSpendCard({ sts, setAside, today }: { sts: SafeToSpend; setAside:
               value={`${formatPeso(sts.perDay!)} / day`}
               strong
             />
+            <BreakdownLine label="− Spent today" value={formatPeso(sts.spentToday)} />
+            <BreakdownLine label="= Left for today" value={formatPeso(sts.leftToday!)} strong divider />
           </dl>
           <p className="pt-2 text-[13px] leading-snug text-sea-text">
             Only spending money in cash, bank and e-wallets counts
             {setAside > 0 && <> (your {formatPeso(setAside)} in savings, emergency fund and investments doesn&apos;t)</>}.
             Pautang, credit limits and loans never do,
             and neither does income you haven&apos;t received yet. A bill stops counting once
-            you mark it paid.
+            you mark it paid. What you spend today comes out of today&apos;s share; paying a
+            scheduled bill doesn&apos;t, since it was already set aside.
           </p>
         </details>
       )}
@@ -491,8 +526,20 @@ function pongSays(
       link: { href: "/plan", label: "See forecast" },
     };
   }
+  if (sts.leftToday !== null && sts.leftToday < 0) {
+    return {
+      mood: "worried",
+      message: `You've gone ${formatPeso(-sts.leftToday)} over today's ${formatPeso(sts.perDay)}. It's okay, let's take it easy tomorrow.`,
+    };
+  }
   if (sts.daysLeft === 1) {
     return { mood: "proud", message: "Payday's tomorrow! You made it, kaya natin 'to." };
+  }
+  if (sts.spentToday > 0) {
+    return {
+      mood: "happy",
+      message: `${formatPeso(sts.leftToday!)} left for today. Payday's in ${sts.daysLeft} days.`,
+    };
   }
   return {
     mood: "happy",

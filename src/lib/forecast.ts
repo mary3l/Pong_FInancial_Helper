@@ -252,34 +252,54 @@ export type SafeToSpend = {
   daysLeft: number | null;
   /** Wallet money minus what's due, never below 0. */
   free: number;
-  /** What's free per day until payday; null without a payday. */
+  /** What's free per day until payday, from the start of today; null without a payday. */
   perDay: number | null;
+  /** Spent from spending wallets today, not counting bills and planned items. */
+  spentToday: number;
+  /** Today's share minus what you've spent today. Below 0 when you went over; null without a payday. */
+  leftToday: number | null;
 };
 
 /**
- * Safe to spend: wallet money, minus unpaid bills and planned expenses due
- * before the next payday, spread over the days until then. Pautang, credit
- * limits and loans never count.
+ * Safe to spend: wallet money at the start of today, minus unpaid bills and
+ * planned expenses due before the next payday, spread over the days until
+ * then. What you spend today comes out of today's share, so the daily amount
+ * holds still all day. Pautang, credit limits and loans never count.
  */
 export function safeToSpend({
   inWallets,
   payday,
   items,
   today,
+  spentToday = 0,
 }: {
+  /** Spending money in your wallets right now. */
   inWallets: number;
   payday: Schedule | null;
   items: ForecastItem[];
   today: string;
+  spentToday?: number;
 }): SafeToSpend {
+  spentToday = roundCents(spentToday);
   if (!payday) {
-    return { inWallets, dueBeforePayday: 0, dueCount: 0, nextPayday: null, daysLeft: null, free: inWallets, perDay: null };
+    return {
+      inWallets,
+      dueBeforePayday: 0,
+      dueCount: 0,
+      nextPayday: null,
+      daysLeft: null,
+      free: inWallets,
+      perDay: null,
+      spentToday,
+      leftToday: null,
+    };
   }
   const nextPayday = nextOccurrence(payday, today);
   const daysLeft = daysBetween(today, nextPayday);
   const due = items.filter((i) => isOwed(i) && i.amount !== null && i.dueOn < nextPayday);
   const dueBeforePayday = roundCents(due.reduce((sum, i) => sum + i.amount!, 0));
-  const free = Math.max(0, roundCents(inWallets - dueBeforePayday));
+  const free = Math.max(0, roundCents(inWallets + spentToday - dueBeforePayday));
+  const perDay = Math.floor(free / daysLeft);
   return {
     inWallets,
     dueBeforePayday,
@@ -287,7 +307,9 @@ export function safeToSpend({
     nextPayday,
     daysLeft,
     free,
-    perDay: Math.floor(free / daysLeft),
+    perDay,
+    spentToday,
+    leftToday: roundCents(perDay - spentToday),
   };
 }
 

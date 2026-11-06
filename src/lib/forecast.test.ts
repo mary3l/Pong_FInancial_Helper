@@ -140,6 +140,21 @@ describe("safe to spend", () => {
     expect(sts.perDay).toBe(Math.floor(4000 / 13));
   });
 
+  it("takes today's spending out of today's share without shrinking it", () => {
+    const items = scheduledItems(inputs(), TODAY, "2026-12-02");
+    // 300 already spent today: the wallets started the day at 10,000.
+    const sts = safeToSpend({ inWallets: 9700, payday, items, today: TODAY, spentToday: 300 });
+    expect(sts.perDay).toBe(Math.floor(4000 / 13));
+    expect(sts.spentToday).toBe(300);
+    expect(sts.leftToday).toBe(Math.floor(4000 / 13) - 300);
+  });
+
+  it("goes below 0 for today when you spend more than today's share", () => {
+    const items = scheduledItems(inputs(), TODAY, "2026-12-02");
+    const sts = safeToSpend({ inWallets: 9000, payday, items, today: TODAY, spentToday: 1000 });
+    expect(sts.leftToday).toBe(Math.floor(4000 / 13) - 1000);
+  });
+
   it("never goes below 0", () => {
     const items = scheduledItems(inputs(), TODAY, "2026-12-02");
     expect(safeToSpend({ inWallets: 1000, payday, items, today: TODAY }).perDay).toBe(0);
