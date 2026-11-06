@@ -565,7 +565,7 @@ function WalletForm({
       <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
       <div className="flex flex-wrap gap-2">
         <button type="submit" disabled={pending} className="h-11 rounded-[14px] bg-sun px-5 font-extrabold text-ink disabled:opacity-60">
-          {pending ? "Saving…" : account ? "Save" : "Add wallet"}
+          {pending ? "Saving…" : account ? "Update wallet" : "Add wallet"}
         </button>
         <button type="button" onClick={onCancel} className="h-11 rounded-[14px] px-4 font-extrabold text-ink hover:bg-mint">
           Cancel
@@ -690,7 +690,7 @@ function InterestRow({ account, accrued, today }: { account: Account; accrued: I
             </div>
           </div>
           <button type="submit" disabled={pending} className="h-11 rounded-[14px] bg-sun px-4 font-extrabold text-ink disabled:opacity-60">
-            {pending ? "Saving…" : "Save as income"}
+            {pending ? "Saving…" : "Add as income"}
           </button>
           <button type="button" onClick={() => setOpen(false)} className="h-11 rounded-[14px] px-3 font-extrabold text-ink">
             Cancel

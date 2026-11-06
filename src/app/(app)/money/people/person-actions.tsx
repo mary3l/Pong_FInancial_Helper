@@ -103,7 +103,7 @@ export function PaymentForm({
       <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
       <div className="flex gap-2">
         <button type="submit" disabled={pending} className="h-11 rounded-[14px] bg-sun px-5 font-extrabold text-ink disabled:opacity-60">
-          {pending ? "Saving…" : `Save ${parseAmount(amount) > 0 ? formatPeso(parseAmount(amount)) : ""}`}
+          {pending ? "Saving…" : `${theyPay ? "Record" : "Pay back"}${parseAmount(amount) > 0 ? ` ${formatPeso(parseAmount(amount))}` : ""}${theyPay ? " payment" : ""}`}
         </button>
         <button type="button" onClick={() => setOpen(false)} className="h-11 rounded-[14px] px-4 font-extrabold text-ink hover:bg-mint">
           Cancel
@@ -208,7 +208,7 @@ export function EditPerson({ personId, name, contact }: { personId: string; name
       <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
       <div className="flex gap-2">
         <button type="submit" disabled={pending} className="h-11 rounded-[14px] bg-sun px-5 font-extrabold text-ink disabled:opacity-60">
-          {pending ? "Saving…" : "Save"}
+          {pending ? "Updating…" : "Update details"}
         </button>
         <button type="button" onClick={() => setOpen(false)} className="h-11 rounded-[14px] px-4 font-extrabold text-ink hover:bg-mint">
           Cancel

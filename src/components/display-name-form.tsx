@@ -43,7 +43,7 @@ export function DisplayNameForm({
           disabled={pending}
           className="h-12 rounded-[18px] bg-sun px-5 font-extrabold text-ink disabled:opacity-60"
         >
-          {pending ? "Saving…" : "Save"}
+          {pending ? "Saving…" : "Use this name"}
         </button>
       </div>
       <p

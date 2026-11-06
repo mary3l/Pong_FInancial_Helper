@@ -296,7 +296,7 @@ export function LoanForm({ wallets, today }: { wallets: Account[]; today: string
 
       <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
       <button type="submit" disabled={pending} className="h-14 rounded-[20px] bg-sun text-lg font-extrabold text-ink disabled:opacity-60">
-        {pending ? "Saving…" : "Save loan"}
+        {pending ? "Saving…" : "Add loan"}
       </button>
     </form>
   );

@@ -604,7 +604,7 @@ function Checkout({
         }
         className="h-14 rounded-[20px] bg-sun text-lg font-extrabold text-ink disabled:opacity-60"
       >
-        {pending ? "Saving…" : `Save groceries${wallet ? ` from ${wallet.name}` : ""}`}
+        {pending ? "Saving…" : `Enter ${valid ? `${formatPeso(value)} ` : ""}groceries${wallet ? ` from ${wallet.name}` : ""}`}
       </button>
     </div>
   );

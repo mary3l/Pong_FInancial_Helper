@@ -97,7 +97,7 @@ export function CreditLineForm({ account, onDone }: { account?: Account; onDone?
       <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
       <div className="flex flex-wrap gap-2">
         <button type="submit" disabled={pending} className="h-11 rounded-[14px] bg-sun px-5 font-extrabold text-ink disabled:opacity-60">
-          {pending ? "Saving…" : account ? "Save" : "Add credit line"}
+          {pending ? "Saving…" : account ? "Update credit line" : "Add credit line"}
         </button>
         <button
           type="button"

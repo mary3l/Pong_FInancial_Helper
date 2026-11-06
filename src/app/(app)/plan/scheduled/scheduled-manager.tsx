@@ -576,7 +576,7 @@ function ScheduledForm({
       <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
       <div className="flex flex-wrap gap-2">
         <button type="submit" disabled={pending} className="h-11 rounded-[14px] bg-sun px-5 font-extrabold text-ink disabled:opacity-60">
-          {pending ? "Saving…" : existing ? "Save" : flow === "in" ? "Add income" : "Add expense"}
+          {pending ? "Saving…" : existing ? `Update ${flow === "in" ? "income" : "expense"}` : flow === "in" ? "Add income" : "Add expense"}
         </button>
         <button type="button" onClick={onClose} className="h-11 rounded-[14px] px-4 font-extrabold text-ink hover:bg-mint">
           Cancel

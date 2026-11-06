@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useEffectEvent, useState, useTransition } from "react";
+import { useEffect, useEffectEvent, useRef, useState, useTransition } from "react";
 import { saveSplit } from "@/app/people-actions";
 import {
   deleteTransaction,
@@ -202,6 +202,10 @@ export function TransactionForm({
   const [paidBy, setPaidBy] = useState<string | null>(null);
   const [splitMethod, setSplitMethod] = useState<"equal" | "exact">("equal");
   const [exact, setExact] = useState<Record<string, string>>({});
+  // Phones: the keypad sheet over the bottom of the form.
+  const [padOpen, setPadOpen] = useState(false);
+  const amountButtonRef = useRef<HTMLButtonElement>(null);
+  const sheetRef = useRef<HTMLDivElement>(null);
 
   const category = type === "transfer" ? null : categories[type];
   const sub = category ? subcategory : null;
@@ -246,6 +250,60 @@ export function TransactionForm({
       const r = press(c.expr, key);
       return { expr: r.expr, error: r.error ?? null };
     });
+  }
+
+  function openPad() {
+    setPadOpen(true);
+    // After it's no longer inert.
+    requestAnimationFrame(() => sheetRef.current?.focus({ preventScroll: true }));
+  }
+
+  /** `refocus`: back to the amount, unless you were scrolling away from it. */
+  function closePad(refocus = true) {
+    setPadOpen(false);
+    if (refocus) amountButtonRef.current?.focus({ preventScroll: true });
+  }
+
+  // Phones: scrolling the form, or swiping the keypad down, puts the keypad away.
+  const dismissPad = useEffectEvent(() => closePad(false));
+  useEffect(() => {
+    if (!padOpen) return;
+    let startY: number | null = null;
+    let onSheet = false;
+    const inSheet = (t: EventTarget | null) => t instanceof Node && !!sheetRef.current?.contains(t);
+    const touchStart = (e: TouchEvent) => {
+      startY = e.touches[0]?.clientY ?? null;
+      onSheet = inSheet(e.target);
+    };
+    const touchMove = (e: TouchEvent) => {
+      const y = e.touches[0]?.clientY;
+      if (startY === null || y === undefined) return;
+      // On the keypad, only a clear swipe down: a tap can wobble a little.
+      const dy = y - startY;
+      if (onSheet ? dy > 40 : Math.abs(dy) > 8) {
+        startY = null;
+        dismissPad();
+      }
+    };
+    const wheel = (e: WheelEvent) => {
+      if (!inSheet(e.target)) dismissPad();
+    };
+    document.addEventListener("touchstart", touchStart, { passive: true });
+    document.addEventListener("touchmove", touchMove, { passive: true });
+    document.addEventListener("wheel", wheel, { passive: true });
+    return () => {
+      document.removeEventListener("touchstart", touchStart);
+      document.removeEventListener("touchmove", touchMove);
+      document.removeEventListener("wheel", wheel);
+    };
+  }, [padOpen]);
+
+  /** Done: slides the keypad away, unless the sum can't be worked out. */
+  function donePad() {
+    if (value === null) return setCalc((c) => ({ ...c, error: "Can't divide by 0" }));
+    if (value < 0) return setCalc((c) => ({ ...c, error: "Amount can't be negative" }));
+    setSaveError(null);
+    closePad();
   }
 
   function pickType(next: TransactionType) {
@@ -395,6 +453,12 @@ export function TransactionForm({
     if (e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
     const target = e.target as HTMLElement | null;
     if (e.key === "Escape") {
+      if (padOpen) {
+        // Close just the keypad, not the whole form.
+        e.preventDefault();
+        closePad();
+        return;
+      }
       // The modal's dialog handles Esc itself.
       if (mode === "page") close();
       return;
@@ -403,7 +467,8 @@ export function TransactionForm({
     if (e.key === "Enter") {
       if (target?.closest("button, a")) return;
       e.preventDefault();
-      submit();
+      if (padOpen) donePad();
+      else submit();
       return;
     }
     const key = keyFromKeyboard(e.key);
@@ -475,12 +540,12 @@ export function TransactionForm({
   }
   const title = editing ? "Edit transaction" : TITLES[type];
   const saveLabel = pending
-    ? splitting ? "Splitting…" : "Saving…"
+    ? splitting ? "Splitting…" : editing ? "Updating…" : "Saving…"
     : !amount
       ? "Enter an amount"
       : splitting
         ? `Split ${formatPeso(amount)}`
-        : `${editing ? "Save" : "Enter"} ${money(amount)}`;
+        : `${editing ? "Update" : "Enter"} ${money(amount)}`;
   const transferWallets = transferTargets(account, accounts, keep);
 
   const typePicker = (className: string) => (
@@ -537,7 +602,17 @@ export function TransactionForm({
           </button>
         </div>
 
-        <div aria-live="polite" className="order-2 flex flex-col items-center lg:order-none lg:items-end lg:rounded-[22px] lg:bg-card lg:px-[18px] lg:py-3.5">
+        <div aria-live="polite" className="relative order-2 flex flex-col items-center rounded-[22px] bg-card px-4 py-2 lg:order-none lg:items-end lg:px-[18px] lg:py-3.5">
+          {/* Phones: the amount opens the keypad sheet. */}
+          <button
+            ref={amountButtonRef}
+            type="button"
+            onClick={openPad}
+            aria-label={amount ? `Amount ${money(amount)}. Tap to change.` : "Type the amount"}
+            aria-expanded={padOpen}
+            aria-controls="keypad-sheet"
+            className="absolute inset-0 rounded-[22px] outline-none focus-visible:ring-2 focus-visible:ring-sea lg:hidden"
+          />
           <span className="min-h-6 text-[17px] font-bold text-muted">
             {hasOperator(calc.expr) ? prettyExpression(calc.expr) : " "}
           </span>
@@ -560,7 +635,45 @@ export function TransactionForm({
           </span>
         </div>
 
-        <Keypad onPress={pressKey} className="order-9 grid-rows-[repeat(5,48px)] lg:order-none lg:grid-rows-[repeat(5,58px)]" />
+        <Keypad onPress={pressKey} className="hidden grid-rows-[repeat(5,58px)] lg:grid" />
+
+        {/* Phones: the keypad slides up from the bottom when you tap the
+            amount, and back down on Done, a tap above it, a swipe down or a
+            scroll, so the rest of the form is in view. Scrolling over the
+            dimmed part still scrolls the form underneath. */}
+        <div
+          aria-hidden="true"
+          onClick={() => closePad()}
+          className={`fixed inset-0 z-40 bg-scrim/40 transition-opacity duration-300 lg:hidden ${
+            padOpen ? "opacity-100" : "pointer-events-none opacity-0"
+          }`}
+        />
+        <div
+          id="keypad-sheet"
+          ref={sheetRef}
+          role="group"
+          aria-label="Amount keypad"
+          tabIndex={-1}
+          inert={!padOpen}
+          className={`fixed inset-x-0 bottom-0 z-50 flex flex-col gap-2.5 rounded-t-[28px] bg-mint px-5 pt-3 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-[0_-12px_40px_rgba(18,48,42,0.25)] outline-none touch-none transition-[translate,visibility] duration-300 ease-out lg:hidden ${
+            padOpen ? "visible translate-y-0" : "invisible translate-y-full"
+          }`}
+        >
+          <span aria-hidden="true" className="mx-auto h-1.5 w-10 rounded-full bg-line" />
+          <div className="flex flex-col items-end rounded-[20px] bg-card px-4 py-2">
+            <span className="min-h-5 text-[15px] font-bold text-muted">
+              {hasOperator(calc.expr) ? prettyExpression(calc.expr) : " "}
+            </span>
+            <span className="font-display text-[36px] leading-[1.05] font-semibold">{money(Math.max(0, value ?? 0))}</span>
+            <span className={`min-h-5 text-[13px] font-bold ${calc.error ? "text-coral-text" : "text-muted"}`}>
+              {calc.error ?? "Add them up, like 120 + 45 + 20."}
+            </span>
+          </div>
+          <Keypad onPress={pressKey} className="grid-rows-[repeat(5,50px)]" />
+          <button type="button" onClick={donePad} className="h-14 rounded-[18px] bg-sun text-[17px] font-extrabold text-ink">
+            {amount ? `Done · ${money(amount)}` : "Done"}
+          </button>
+        </div>
 
         <p className="hidden flex-wrap gap-x-3.5 gap-y-1.5 text-[13px] text-muted lg:flex">
           <strong className="text-ink">Keyboard works too:</strong>

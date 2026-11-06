@@ -279,7 +279,7 @@ function SettingsForm({ initial, isNew, onClose }: { initial: PayrollSettings; i
       <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
       <div className="flex flex-wrap gap-2">
         <button type="submit" disabled={pending} className="h-11 rounded-[14px] bg-sun px-5 font-extrabold text-ink disabled:opacity-60">
-          {pending ? "Saving…" : isNew ? "Save and calculate" : "Save"}
+          {pending ? "Saving…" : isNew ? "Calculate my pay" : "Update pay settings"}
         </button>
         {!isNew && (
           <button type="button" onClick={onClose} className="h-11 rounded-[14px] px-4 font-extrabold text-ink hover:bg-mint">
@@ -532,7 +532,7 @@ function CutoffCard({ records, period, payday, today }: { records: PayrollRecord
       <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
       <p role="status" className="text-sm font-bold text-sea-dark empty:hidden">{notice}</p>
       <button type="button" onClick={save} disabled={pending} className="h-12 rounded-[14px] bg-sun px-5 font-extrabold text-ink disabled:opacity-60 sm:self-start">
-        {pending ? "Saving…" : "Save cutoff"}
+        {pending ? "Updating…" : "Update my payday"}
       </button>
     </Card>
   );
@@ -700,7 +700,7 @@ function AmountsForm({ settings, onClose }: { settings: PayrollSettings; onClose
       <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
       <div className="flex flex-wrap gap-2">
         <button type="submit" disabled={pending} className="h-11 rounded-[14px] bg-sun px-5 font-extrabold text-ink disabled:opacity-60">
-          {pending ? "Saving…" : "Save"}
+          {pending ? "Saving…" : "Use these amounts"}
         </button>
         <button type="button" onClick={onClose} className="h-11 rounded-[14px] px-4 font-extrabold text-ink hover:bg-mint">
           Cancel

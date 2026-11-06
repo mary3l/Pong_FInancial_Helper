@@ -6,7 +6,7 @@ import { lendOrBorrow } from "@/app/people-actions";
 import { AmountInput } from "@/components/amount-input";
 import { ChoiceChip, FIELD_CLASS } from "@/components/choice-chip";
 import type { Account } from "@/lib/data";
-import { parseAmount } from "@/lib/money";
+import { formatPeso, parseAmount } from "@/lib/money";
 
 export function LendForm({
   wallets,
@@ -180,7 +180,7 @@ export function LendForm({
 
       <p role="alert" className="text-sm font-bold text-coral-text empty:hidden">{error}</p>
       <button type="submit" disabled={pending} className="h-14 rounded-[20px] bg-sun text-lg font-extrabold text-ink disabled:opacity-60">
-        {pending ? "Saving…" : "Save"}
+        {pending ? "Saving…" : `${lend ? "Lend" : "Borrow"}${parseAmount(amount) > 0 ? ` ${formatPeso(parseAmount(amount))}` : ""}`}
       </button>
     </form>
   );

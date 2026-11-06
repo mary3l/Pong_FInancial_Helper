@@ -173,7 +173,7 @@ export function EditSplit({
           Cancel
         </button>
         <button type="submit" disabled={pending} className="h-12 flex-[2] rounded-[16px] bg-sun font-extrabold text-ink disabled:opacity-60">
-          {pending ? "Saving…" : "Save changes"}
+          {pending ? "Updating…" : "Update split"}
         </button>
       </div>
     </form>

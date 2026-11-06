@@ -316,7 +316,7 @@ export function PaydayForm({
           disabled={pending}
           className="h-14 rounded-[20px] bg-sun text-lg font-extrabold text-ink disabled:opacity-60"
         >
-          {pending ? "Saving…" : editing ? "Save" : "Finish setup"}
+          {pending ? "Saving…" : editing ? "Update payday" : "Finish setup"}
         </button>
         <button
           type="button"

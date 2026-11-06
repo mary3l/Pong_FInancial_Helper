@@ -250,7 +250,7 @@ export function AdjustmentEditor({
           {confirmDelete ? "Tap again to delete" : "Delete"}
         </button>
         <button type="submit" disabled={pending} className="h-14 flex-[2] rounded-[18px] bg-sun text-[17px] font-extrabold text-ink disabled:opacity-60">
-          {pending ? "Saving…" : "Save"}
+          {pending ? "Updating…" : "Update adjustment"}
         </button>
       </div>
       <Link href={closeHref} className="w-fit font-extrabold text-sea-dark">Cancel</Link>
